@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>个人中心 | 虾虾工厂 - 您的数字员工控制台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050714;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .sidebar-item-active {
+            background-color: rgba(106, 13, 173, 0.2);
+            border-left: 3px solid #6A0DAD;
+            color: #ffffff;
+        }
+        .card-profile {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        .card-profile:hover {
+            border-color: rgba(106, 13, 173, 0.3);
+            background: rgba(255, 255, 255, 0.04);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<!-- 1. 顶部导航栏 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-400">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="#">数职市场</a>
+            <a class="hover:text-white transition" href="#">开发者后台</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-6">
+        <div class="relative">
+            <span class="iconify text-2xl text-gray-400 cursor-pointer hover:text-white" data-icon="mdi:bell-outline"></span>
+            <span class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold">3</span>
+        </div>
+        <div class="flex items-center space-x-3 border-l border-white/10 pl-6">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-r from-[#6A0DAD] to-cyan-500 flex items-center justify-center text-sm font-bold" id="nav-avatar">U</div>
+            <div class="hidden md:block">
+                <p class="text-xs font-bold" id="nav-username">加载中...</p>
+                <p class="text-[10px] text-gray-500">虾虾工厂用户</p>
+            </div>
+        </div>
+    </div>
+</nav>
+<div class="flex pt-20 min-h-screen">
+    <!-- 侧边栏 -->
+    <aside class="w-64 border-r border-white/5 bg-black/20 hidden lg:block">
+        <nav class="p-6 space-y-2">
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-4 ml-4">核心管理</p>
+            <a class="sidebar-item-active flex items-center space-x-3 px-4 py-3 rounded-xl transition" href="#">
+                <span class="iconify" data-icon="mdi:view-dashboard-outline"></span>
+                <span class="text-sm">控制面板</span>
+            </a>
+            <a class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition" href="#">
+                <span class="iconify" data-icon="mdi:robot-outline"></span>
+                <span class="text-sm">我的数字员工</span>
+            </a>
+            <a class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition" href="#">
+                <span class="iconify" data-icon="mdi:history"></span>
+                <span class="text-sm">订单历史</span>
+            </a>
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mt-8 mb-4 ml-4">个人账户</p>
+            <a class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition" href="#">
+                <span class="iconify" data-icon="mdi:account-cog-outline"></span>
+                <span class="text-sm">资料设置</span>
+            </a>
+            <a class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition" href="#">
+                <span class="iconify" data-icon="mdi:credit-card-outline"></span>
+                <span class="text-sm">财务账单</span>
+            </a>
+            <a class="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition" href="#">
+                <span class="iconify" data-icon="mdi:shield-key-outline"></span>
+                <span class="text-sm">安全中心</span>
+            </a>
+            <div class="pt-20">
+                <a onclick="logout()" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-400/10 transition cursor-pointer">
+                    <span class="iconify" data-icon="mdi:logout"></span>
+                    <span class="text-sm">退出登录</span>
+                </a>
+            </div>
+        </nav>
+    </aside>
+    <!-- 内容区域 -->
+    <main class="flex-grow p-6 lg:p-10 overflow-y-auto">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+                <div>
+                    <h1 class="text-3xl font-bold mb-1">您好, <span id="greeting-name">用户</span></h1>
+                    <p class="text-gray-400">当前有 4 位数字员工正在为您工作</p>
+                </div>
+                <div class="flex space-x-3">
+                    <button class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2.5 rounded-xl text-sm font-bold transition">新雇佣员工</button>
+                    <button class="bg-white/5 border border-white/10 px-6 py-2.5 rounded-xl text-sm font-bold transition">下载报表</button>
+                </div>
+            </div>
+            <!-- 核心数据概览 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                <div class="card-profile p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500">
+                            <span class="iconify text-xl" data-icon="mdi:timer-outline"></span>
+                        </div>
+                        <span class="text-xs text-green-400">+12% ↑</span>
+                    </div>
+                    <p class="text-gray-500 text-xs mb-1">累计工时</p>
+                    <h3 class="text-2xl font-bold">1,284h</h3>
+                </div>
+                <div class="card-profile p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-10 h-10 rounded-lg bg-[#6A0DAD]/20 flex items-center justify-center text-[#6A0DAD]">
+                            <span class="iconify text-xl" data-icon="mdi:rocket-launch-outline"></span>
+                        </div>
+                        <span class="text-xs text-gray-500">持平</span>
+                    </div>
+                    <p class="text-gray-500 text-xs mb-1">执行任务数</p>
+                    <h3 class="text-2xl font-bold">42,903</h3>
+                </div>
+                <div class="card-profile p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-500">
+                            <span class="iconify text-xl" data-icon="mdi:currency-usd"></span>
+                        </div>
+                        <span class="text-xs text-red-400">-5% ↓</span>
+                    </div>
+                    <p class="text-gray-500 text-xs mb-1">本月节省成本</p>
+                    <h3 class="text-2xl font-bold">￥14,200</h3>
+                </div>
+                <div class="card-profile p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-500">
+                            <span class="iconify text-xl" data-icon="mdi:star-outline"></span>
+                        </div>
+                        <span class="text-xs text-gray-500">Top 1%</span>
+                    </div>
+                    <p class="text-gray-500 text-xs mb-1">账号安全等级</p>
+                    <h3 class="text-2xl font-bold italic">SSS</h3>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                <!-- 左侧 -->
+                <div class="lg:col-span-2 space-y-10">
+                    <!-- 活跃数字员工 -->
+                    <section>
+                        <div class="flex justify-between items-center mb-6">
+                            <h4 class="font-bold flex items-center"><span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:account-group"></span> 活跃数字员工</h4>
+                            <a class="text-xs text-cyan-400" href="#">管理全部</a>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="card-profile p-5 flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center">
+                                        <span class="iconify text-2xl" data-icon="mdi:code-braces"></span>
+                                    </div>
+                                    <div>
+                                        <h5 class="font-bold text-sm">全栈代码专家 #082</h5>
+                                        <p class="text-[10px] text-gray-500">正在重构：API Gateway</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="block text-xs font-bold text-green-400">运行中</span>
+                                    <span class="text-[10px] text-gray-500">到期: 2026.04.12</span>
+                                </div>
+                            </div>
+                            <div class="card-profile p-5 flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center">
+                                        <span class="iconify text-2xl" data-icon="mdi:palette-outline"></span>
+                                    </div>
+                                    <div>
+                                        <h5 class="font-bold text-sm">UI/UX 动效助手</h5>
+                                        <p class="text-[10px] text-gray-500">等待指派任务</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="block text-xs font-bold text-blue-400">待命</span>
+                                    <span class="text-[10px] text-gray-500">到期: 2026.05.01</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    <!-- 最近账单 -->
+                    <section>
+                        <h4 class="font-bold mb-6 flex items-center"><span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:file-document-outline"></span> 最近账单</h4>
+                        <div class="card-profile overflow-hidden">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-white/5 text-gray-400 text-xs">
+                                    <tr>
+                                        <th class="px-6 py-4">服务名称</th>
+                                        <th class="px-6 py-4">支付日期</th>
+                                        <th class="px-6 py-4">金额</th>
+                                        <th class="px-6 py-4">状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-white/5">
+                                    <tr>
+                                        <td class="px-6 py-4 font-medium">季度订阅：全栈专家包</td>
+                                        <td class="px-6 py-4">2026-03-10</td>
+                                        <td class="px-6 py-4">￥12,800.00</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-green-500/20 text-green-400 rounded text-[10px]">已支付</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-6 py-4 font-medium">按量付费：算力扩容</td>
+                                        <td class="px-6 py-4">2026-03-05</td>
+                                        <td class="px-6 py-4">￥542.20</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-green-500/20 text-green-400 rounded text-[10px]">已支付</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+                <!-- 右侧 -->
+                <div class="space-y-10">
+                    <!-- 基本信息 -->
+                    <section class="card-profile p-8">
+                        <h4 class="font-bold mb-6">基本信息</h4>
+                        <div class="space-y-4">
+                            <div class="flex items-center space-x-4 mb-8">
+                                <div class="w-16 h-16 rounded-2xl bg-gradient-to-r from-[#6A0DAD] to-cyan-500 flex items-center justify-center text-2xl font-bold border-2 border-[#6A0DAD]" id="profile-avatar">U</div>
+                                <div>
+                                    <p class="font-bold text-lg" id="profile-username">加载中...</p>
+                                    <p class="text-xs text-gray-500" id="profile-id">ID: ---</p>
+                                </div>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-[10px] text-gray-500 mb-1">绑定邮箱</label>
+                                    <p class="text-sm font-medium" id="profile-email">---</p>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-gray-500 mb-1">注册时间</label>
+                                    <p class="text-sm font-medium" id="profile-created">---</p>
+                                </div>
+                                <button class="w-full mt-4 text-xs border border-white/10 py-2 rounded-lg hover:bg-white/5 transition">编辑详细资料</button>
+                            </div>
+                        </div>
+                    </section>
+                    <!-- 通知中心 -->
+                    <section class="card-profile p-8">
+                        <h4 class="font-bold mb-6 flex justify-between items-center">
+                            消息通知
+                            <span class="text-[10px] bg-[#6A0DAD] px-2 py-0.5 rounded-full">3</span>
+                        </h4>
+                        <div class="space-y-6">
+                            <div class="flex space-x-3 border-b border-white/5 pb-4">
+                                <div class="mt-1"><span class="iconify text-cyan-400" data-icon="mdi:alert-decagram-outline"></span></div>
+                                <div>
+                                    <p class="text-xs font-bold">系统升级提醒</p>
+                                    <p class="text-[10px] text-gray-500 mt-1">虾虾工厂 v3.5 已于今日上线，新增多模态交互引擎。</p>
+                                </div>
+                            </div>
+                            <div class="flex space-x-3 border-b border-white/5 pb-4">
+                                <div class="mt-1"><span class="iconify text-orange-400" data-icon="mdi:alert-outline"></span></div>
+                                <div>
+                                    <p class="text-xs font-bold">租赁即将到期</p>
+                                    <p class="text-[10px] text-gray-500 mt-1">"代码专家 #082" 还有 7 天到期，请及时续费。</p>
+                                </div>
+                            </div>
+                            <button class="w-full text-xs text-gray-500 hover:text-white transition">查看全部消息</button>
+                        </div>
+                    </section>
+                    <!-- 快捷设置 -->
+                    <section class="card-profile p-8">
+                        <h4 class="font-bold mb-6">快捷设置</h4>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-gray-400">两步验证 (2FA)</span>
+                                <span class="text-[10px] text-green-400 font-bold">已启用</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-gray-400">暗黑模式</span>
+                                <div class="w-8 h-4 bg-[#6A0DAD] rounded-full relative">
+                                    <div class="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+<!-- 页脚 -->
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+<script>
+    function logout() {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.href = 'login.html';
+    }
+
+    async function loadProfile() {
+        const token = localStorage.getItem('xiaxia_token');
+        if (!token) {
+            window.location.href = 'login.html';
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/profile', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (!res.ok) {
+                localStorage.removeItem('xiaxia_token');
+                localStorage.removeItem('xiaxia_user');
+                window.location.href = 'login.html';
+                return;
+            }
+            const data = await res.json();
+            const user = data.user;
+            const initial = (user.username || 'U')[0].toUpperCase();
+
+            document.getElementById('nav-username').textContent = user.username;
+            document.getElementById('nav-avatar').textContent = initial;
+            document.getElementById('greeting-name').textContent = user.username;
+            document.getElementById('profile-username').textContent = user.username;
+            document.getElementById('profile-avatar').textContent = initial;
+            document.getElementById('profile-id').textContent = 'ID: ' + user.id;
+            document.getElementById('profile-email').textContent = user.email;
+            document.getElementById('profile-created').textContent = user.created_at ? user.created_at.split('T')[0] : '---';
+        } catch (err) {
+            // 网络错误时尝试使用本地缓存
+            const userStr = localStorage.getItem('xiaxia_user');
+            if (userStr) {
+                const user = JSON.parse(userStr);
+                const initial = (user.username || 'U')[0].toUpperCase();
+                document.getElementById('nav-username').textContent = user.username;
+                document.getElementById('nav-avatar').textContent = initial;
+                document.getElementById('greeting-name').textContent = user.username;
+                document.getElementById('profile-username').textContent = user.username;
+                document.getElementById('profile-avatar').textContent = initial;
+                document.getElementById('profile-id').textContent = 'ID: ' + user.id;
+                document.getElementById('profile-email').textContent = user.email;
+            }
+        }
+    }
+
+    loadProfile();
+</script>
+</body>
+</html>

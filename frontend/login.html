@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>登录 | 虾虾工厂 - 2026 数字劳动力平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050714;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .text-gradient {
+            background: linear-gradient(90deg, #6A0DAD, #00D2FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .btn-glow:hover {
+            box-shadow: 0 0 20px rgba(106, 13, 173, 0.6);
+            transform: translateY(-2px);
+        }
+        .input-focus:focus {
+            border-color: #6A0DAD;
+            box-shadow: 0 0 10px rgba(106, 13, 173, 0.3);
+            outline: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<!-- 导航栏 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span>
+        </a>
+    </div>
+    <div class="flex items-center space-x-4">
+        <a class="text-sm font-medium hover:text-cyan-400 transition" href="register.html">没有账号？立即注册</a>
+    </div>
+</nav>
+<!-- 登录主体 -->
+<main class="flex-grow flex items-center justify-center pt-24 pb-12 px-6 relative">
+    <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-[#6A0DAD]/10 rounded-full filter blur-[100px] pointer-events-none"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full filter blur-[120px] pointer-events-none"></div>
+    <div class="w-full max-w-md glass-morphism rounded-3xl p-8 lg:p-10 z-10">
+        <div class="text-center mb-10">
+            <h1 class="text-3xl font-bold mb-2">欢迎回来</h1>
+            <p class="text-gray-400">请登录您的虾虾工厂账号</p>
+        </div>
+        <!-- 错误/成功提示 -->
+        <div id="msg-box" class="hidden mb-6 p-4 rounded-xl text-sm text-center"></div>
+        <form id="login-form" class="space-y-6">
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-gray-300 ml-1">用户名或邮箱</label>
+                <div class="relative">
+                    <span class="iconify absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" data-icon="mdi:email-outline"></span>
+                    <input id="login-id" autocomplete="username" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 input-focus transition-all" placeholder="name@company.com" type="text" required/>
+                </div>
+            </div>
+            <div class="space-y-2">
+                <div class="flex justify-between items-center px-1">
+                    <label class="block text-sm font-medium text-gray-300">密码</label>
+                    <a class="text-xs text-[#6A0DAD] hover:underline" href="#">忘记密码?</a>
+                </div>
+                <div class="relative">
+                    <span class="iconify absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" data-icon="mdi:lock-outline"></span>
+                    <input id="login-password" autocomplete="current-password" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 input-focus transition-all" placeholder="••••••••" type="password" required/>
+                </div>
+            </div>
+            <div class="flex items-center">
+                <input class="w-4 h-4 rounded border-gray-300 text-[#6A0DAD] focus:ring-[#6A0DAD] bg-white/5" id="remember-me" type="checkbox"/>
+                <label class="ml-2 block text-sm text-gray-400" for="remember-me">记住我（30天内免登录）</label>
+            </div>
+            <button id="login-btn" class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition-all mb-4" type="submit">
+                登录
+            </button>
+            <div class="relative my-8">
+                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-white/10"></div></div>
+                <div class="relative flex justify-center text-xs uppercase"><span class="bg-[#050714] px-4 text-gray-500 font-medium">或者使用生物识别/社交账号</span></div>
+            </div>
+            <div class="grid grid-cols-3 gap-4">
+                <button class="flex justify-center items-center py-3 border border-white/10 rounded-xl hover:bg-white/5 transition" title="Passkey/指纹登录" type="button">
+                    <span class="iconify text-xl" data-icon="mdi:fingerprint"></span>
+                </button>
+                <button class="flex justify-center items-center py-3 border border-white/10 rounded-xl hover:bg-white/5 transition" type="button">
+                    <span class="iconify text-xl" data-icon="mdi:wechat"></span>
+                </button>
+                <button class="flex justify-center items-center py-3 border border-white/10 rounded-xl hover:bg-white/5 transition" type="button">
+                    <span class="iconify text-xl" data-icon="mdi:github"></span>
+                </button>
+            </div>
+        </form>
+    </div>
+</main>
+<!-- 页脚 -->
+<footer class="py-10 px-6 border-t border-white/5 text-center text-xs text-gray-600">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+<script>
+    const form = document.getElementById('login-form');
+    const msgBox = document.getElementById('msg-box');
+    const loginBtn = document.getElementById('login-btn');
+
+    function showMsg(text, isError) {
+        msgBox.textContent = text;
+        msgBox.className = 'mb-6 p-4 rounded-xl text-sm text-center ' +
+            (isError ? 'bg-red-500/20 border border-red-500/30 text-red-300' : 'bg-green-500/20 border border-green-500/30 text-green-300');
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const loginId = document.getElementById('login-id').value.trim();
+        const password = document.getElementById('login-password').value;
+
+        if (!loginId || !password) {
+            showMsg('请填写所有字段', true);
+            return;
+        }
+
+        loginBtn.disabled = true;
+        loginBtn.textContent = '登录中...';
+
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login_id: loginId, password: password })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                localStorage.setItem('xiaxia_token', data.token);
+                localStorage.setItem('xiaxia_user', JSON.stringify(data.user));
+                showMsg('登录成功，正在跳转...', false);
+                setTimeout(() => { window.location.href = 'profile.html'; }, 800);
+            } else {
+                showMsg(data.error || '登录失败', true);
+                loginBtn.disabled = false;
+                loginBtn.textContent = '登录';
+            }
+        } catch (err) {
+            showMsg('网络错误，请稍后再试', true);
+            loginBtn.disabled = false;
+            loginBtn.textContent = '登录';
+        }
+    });
+
+    // 已登录则跳转
+    if (localStorage.getItem('xiaxia_token')) {
+        window.location.href = 'profile.html';
+    }
+</script>
+</body>
+</html>
