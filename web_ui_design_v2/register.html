@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>注册 | 虾虾工厂 - 加入 2026 数字劳动力变革</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+<style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050714;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .text-gradient {
+            background: linear-gradient(90deg, #6A0DAD, #00D2FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .btn-glow:hover {
+            box-shadow: 0 0 20px rgba(106, 13, 173, 0.6);
+            transform: translateY(-2px);
+        }
+        .input-focus:focus {
+            border-color: #6A0DAD;
+            box-shadow: 0 0 10px rgba(106, 13, 173, 0.3);
+            outline: none;
+        }
+        /* 实时强度指示器 */
+        #password-strength {
+            height: 4px;
+            width: 0%;
+            transition: width 0.3s ease, background-color 0.3s ease;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<!-- 导航栏 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+<div class="flex items-center space-x-10">
+<a class="flex items-center space-x-2" href="虾虾工厂官网首页.html">
+<span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+<span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span>
+</a>
+</div>
+<div class="flex items-center space-x-4">
+<a class="text-sm font-medium hover:text-cyan-400 transition" href="login.html">已有账号？立即登录</a>
+</div>
+</nav>
+<!-- 注册主体 -->
+<main class="flex-grow flex items-center justify-center pt-32 pb-16 px-6 relative">
+<!-- 装饰背景 -->
+<div class="absolute top-1/4 right-1/4 w-64 h-64 bg-cyan-500/10 rounded-full filter blur-[100px] pointer-events-none"></div>
+<div class="absolute bottom-1/4 left-1/4 w-96 h-96 bg-[#6A0DAD]/10 rounded-full filter blur-[120px] pointer-events-none"></div>
+<div class="w-full max-w-lg glass-morphism rounded-3xl p-8 lg:p-12 z-10">
+<div class="text-center mb-10">
+<h1 class="text-3xl font-bold mb-2">加入虾虾工厂</h1>
+<p class="text-gray-400">创建一个免费账号，开始租赁您的首位数字员工。日期：2026年3月15日</p>
+</div>
+<form class="space-y-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="block text-sm font-medium text-gray-300 ml-1">用户名</label>
+<div class="relative">
+<span class="iconify absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" data-icon="mdi:account-outline"></span>
+<input class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 input-focus transition-all" placeholder="xiaxia_user" type="text"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="block text-sm font-medium text-gray-300 ml-1">电子邮箱</label>
+<div class="relative">
+<span class="iconify absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" data-icon="mdi:email-outline"></span>
+<input autocomplete="email" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 input-focus transition-all" placeholder="name@company.com" type="email"/>
+</div>
+</div>
+</div>
+<div class="space-y-2">
+<label class="block text-sm font-medium text-gray-300 ml-1">密码</label>
+<div class="relative">
+<span class="iconify absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" data-icon="mdi:lock-outline"></span>
+<input autocomplete="new-password" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 input-focus transition-all" id="password-input" placeholder="••••••••" type="password"/>
+</div>
+<div class="w-full bg-white/5 h-1 rounded-full mt-2 overflow-hidden">
+<div id="password-strength"></div>
+</div>
+<p class="text-[10px] text-gray-500 ml-1">密码建议至少 8 位，包含大小写、数字及特殊字符。</p>
+</div>
+<div class="space-y-2">
+<label class="block text-sm font-medium text-gray-300 ml-1">确认密码</label>
+<div class="relative">
+<span class="iconify absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" data-icon="mdi:lock-check-outline"></span>
+<input autocomplete="new-password" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 input-focus transition-all" placeholder="••••••••" type="password"/>
+</div>
+</div>
+<div class="flex items-start">
+<div class="flex items-center h-5">
+<input class="w-4 h-4 rounded border-gray-300 text-[#6A0DAD] focus:ring-[#6A0DAD] bg-white/5 cursor-pointer" id="terms" required="" type="checkbox"/>
+</div>
+<div class="ml-3 text-sm">
+<label class="text-gray-400" for="terms">
+                            我已阅读并同意 <a class="text-[#6A0DAD] hover:underline" href="#">《虾虾工厂用户协议》</a>、 <a class="text-[#6A0DAD] hover:underline" href="#">《隐私政策》</a> 以及 <a class="text-[#6A0DAD] hover:underline" href="#">《数据处理协议 (2026版)》</a>。
+                        </label>
+</div>
+</div>
+<button class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition-all" type="submit">
+                    创建账号
+                </button>
+<!-- 注册帮助 -->
+<div class="p-4 bg-white/5 border border-white/10 rounded-xl text-center">
+<p class="text-xs text-gray-500">
+<span class="iconify inline mr-1" data-icon="mdi:shield-check-outline"></span>
+                        您的个人隐私数据符合 GDPR 与 2026 全球个人数据保护法案要求。
+                    </p>
+</div>
+</form>
+</div>
+</main>
+<!-- 页脚 -->
+<footer class="py-10 px-6 border-t border-white/5 text-center text-xs text-gray-600">
+<p>© 2026 虾虾工厂 (XiaXia Factory Inc.) | 2026年3月15日</p>
+</footer>
+<script>
+        // 简单的密码强度实时反馈模拟
+        const pswInput = document.getElementById('password-input');
+        const pswBar = document.getElementById('password-strength');
+
+        pswInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (val.length === 0) {
+                pswBar.style.width = '0%';
+            } else if (val.length < 6) {
+                pswBar.style.width = '33%';
+                pswBar.style.backgroundColor = '#ef4444';
+            } else if (val.length < 10) {
+                pswBar.style.width = '66%';
+                pswBar.style.backgroundColor = '#f59e0b';
+            } else {
+                pswBar.style.width = '100%';
+                pswBar.style.backgroundColor = '#10b981';
+            }
+        });
+    </script>
+</body>
+</html>
