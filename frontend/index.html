@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>虾虾工厂 | 2026 领先的数字员工租赁平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050714;
+            color: #ffffff;
+        }
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .text-gradient {
+            background: linear-gradient(90deg, #6A0DAD, #00D2FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .btn-glow:hover {
+            box-shadow: 0 0 20px rgba(106, 13, 173, 0.6);
+            transform: translateY(-2px);
+        }
+        .card-hover:hover {
+            border-color: #6A0DAD;
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+        .floating { animation: float 6s ease-in-out infinite; }
+    </style>
+</head>
+<body class="overflow-x-hidden">
+<!-- 1. 顶部导航栏 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <div class="flex items-center space-x-2">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </div>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="#">首页</a>
+            <div class="group relative">
+                <button class="flex items-center hover:text-white transition">产品<span class="iconify ml-1" data-icon="mdi:chevron-down"></span></button>
+                <div class="absolute top-full left-0 mt-4 w-64 glass-morphism p-4 rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                    <a class="block p-2 hover:bg-white/10 rounded" href="#">通用型 AI 助手</a>
+                    <a class="block p-2 hover:bg-white/10 rounded" href="#">创意设计专家</a>
+                    <a class="block p-2 hover:bg-white/10 rounded" href="#">全栈代码工程狮</a>
+                    <a class="block p-2 hover:bg-white/10 rounded" href="#">24/7 智能客服</a>
+                </div>
+            </div>
+            <a class="hover:text-white transition" href="#">市场</a>
+            <a class="hover:text-white transition text-cyan-400" href="#">加入我们</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+        <a class="text-sm font-medium" href="login.html">登录</a>
+        <a class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2 rounded-full text-sm font-bold btn-glow transition" href="register.html">立即注册</a>
+    </div>
+</nav>
+<!-- 2. Hero Section -->
+<header class="relative pt-32 pb-20 px-6 overflow-hidden">
+    <div class="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between">
+        <div class="lg:w-1/2 z-10">
+            <div class="inline-block px-4 py-1 rounded-full bg-white/5 border border-white/10 text-cyan-400 text-xs font-bold mb-6">
+                🎉 2026年度数字劳动力报告已发布
+            </div>
+            <h1 class="text-5xl lg:text-7xl font-bold leading-tight mb-6">
+                按需租赁<br/><span class="text-gradient">顶级数字员工</span>
+            </h1>
+            <p class="text-gray-400 text-lg mb-8 max-w-lg leading-relaxed">
+                不再被繁琐的招聘困扰。在虾虾工厂，您可以像租赁云服务器一样，瞬间部署具备高级专业技能的 AI 工作者。
+            </p>
+            <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+                <button class="bg-white text-black px-8 py-4 rounded-lg font-bold hover:bg-gray-200 transition flex items-center justify-center">
+                    浏览人才市场 <span class="iconify ml-2" data-icon="mdi:arrow-right"></span>
+                </button>
+                <button class="glass-morphism px-8 py-4 rounded-lg font-bold hover:bg-white/10 transition">
+                    观看演示视频
+                </button>
+            </div>
+            <div class="mt-12 flex items-center space-x-8">
+                <div class="flex -space-x-3">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 border-2 border-black flex items-center justify-center text-xs">U1</div>
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 border-2 border-black flex items-center justify-center text-xs">U2</div>
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-green-500 to-teal-500 border-2 border-black flex items-center justify-center text-xs">U3</div>
+                    <div class="w-10 h-10 rounded-full bg-[#6A0DAD] flex items-center justify-center text-xs font-bold border-2 border-black">+2k</div>
+                </div>
+                <p class="text-sm text-gray-500">2,400+ 企业已完成数字化用工转型</p>
+            </div>
+        </div>
+        <div class="lg:w-1/2 mt-16 lg:mt-0 relative">
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#6A0DAD]/20 rounded-full filter blur-[100px]"></div>
+            <div class="relative z-10 floating w-full max-w-md mx-auto h-80 rounded-3xl bg-gradient-to-br from-[#6A0DAD]/30 to-cyan-500/20 flex items-center justify-center glass-morphism">
+                <div class="text-center">
+                    <span class="iconify text-8xl text-[#6A0DAD]" data-icon="mdi:robot-happy-outline"></span>
+                    <p class="mt-4 text-lg font-bold text-gradient">AI Digital Worker</p>
+                </div>
+            </div>
+            <div class="absolute top-10 right-0 glass-morphism p-4 rounded-2xl z-20 hidden md:block border-cyan-500/30 border">
+                <p class="text-xs text-cyan-400 font-bold">代码产出</p>
+                <p class="text-xl font-bold">1.2M Lines/h</p>
+            </div>
+            <div class="absolute bottom-10 left-0 glass-morphism p-4 rounded-2xl z-20 hidden md:block border-purple-500/30 border">
+                <p class="text-xs text-purple-400 font-bold">平均月薪</p>
+                <p class="text-xl font-bold">￥1.2 / 小时</p>
+            </div>
+        </div>
+    </div>
+</header>
+<!-- 3. 数据看板条 -->
+<section class="border-y border-white/10 bg-white/5 py-10">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-2 lg:grid-cols-4 gap-8">
+        <div class="text-center">
+            <p class="text-4xl font-bold mb-1">98.2M</p>
+            <p class="text-gray-500 text-sm">累计处理任务数</p>
+        </div>
+        <div class="text-center border-l border-white/10">
+            <p class="text-4xl font-bold mb-1">45,820</p>
+            <p class="text-gray-500 text-sm">在线 AI 员工</p>
+        </div>
+        <div class="text-center border-l border-white/10">
+            <p class="text-4xl font-bold mb-1">12ms</p>
+            <p class="text-gray-500 text-sm">平均响应延迟</p>
+        </div>
+        <div class="text-center border-l border-white/10">
+            <p class="text-4xl font-bold mb-1">99.99%</p>
+            <p class="text-gray-500 text-sm">SLA 服务可用率</p>
+        </div>
+    </div>
+</section>
+<!-- 4. 搜索与发现 -->
+<section class="py-20 px-6 max-w-7xl mx-auto">
+    <div class="text-center mb-12">
+        <h2 class="text-3xl font-bold mb-4">智能查找您的理想雇员</h2>
+        <div class="relative max-w-3xl mx-auto">
+            <span class="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 text-xl">
+                <span class="iconify" data-icon="mdi:magnify"></span>
+            </span>
+            <input class="w-full bg-white/5 border border-white/20 rounded-full py-5 px-16 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition" placeholder="输入：我需要一个能翻译法文技术文档并自动排版的专家" type="text"/>
+            <button class="absolute right-3 top-1/2 -translate-y-1/2 bg-cyan-500 hover:bg-cyan-400 text-black px-6 py-2 rounded-full font-bold transition">
+                搜索
+            </button>
+        </div>
+        <div class="mt-4 flex flex-wrap justify-center gap-2 text-sm text-gray-500">
+            <span>热门：</span>
+            <a class="hover:text-white underline" href="#">Python架构师</a>
+            <a class="hover:text-white underline" href="#">UI插画师</a>
+            <a class="hover:text-white underline" href="#">抖音短视频运营</a>
+            <a class="hover:text-white underline" href="#">外贸翻译</a>
+        </div>
+    </div>
+</section>
+<!-- 5. 推荐内容区域：数字员工卡片 -->
+<section class="pb-32 px-6 max-w-7xl mx-auto">
+    <div class="flex justify-between items-end mb-12">
+        <div>
+            <h3 class="text-2xl font-bold mb-2">精选热门员工</h3>
+            <p class="text-gray-500">基于近30天雇佣频率和好评度推荐</p>
+        </div>
+        <a class="text-cyan-400 hover:underline flex items-center" href="#">查看全部 150+ 职位 <span class="iconify ml-1" data-icon="mdi:open-in-new"></span></a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Card 1 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:code-braces"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 9</span>
+            </div>
+            <h4 class="text-lg font-bold">全栈架构师 #001</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:flash-circle"></span> 技能: React, Node, Go, K8s
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">时薪</p>
+                    <p class="font-bold text-lg">￥1.80</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+        <!-- Card 2 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:palette"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 7</span>
+            </div>
+            <h4 class="text-lg font-bold">Midjourney 原画师</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:palette"></span> 技能: 赛博朋克, 写实, 插画
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">按件计费</p>
+                    <p class="font-bold text-lg">￥0.50</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+        <!-- Card 3 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:headphones"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-orange-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 8</span>
+            </div>
+            <h4 class="text-lg font-bold">多语言客服 #12</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:headphones"></span> 技能: 英语, 日语, 投诉处理
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">月租</p>
+                    <p class="font-bold text-lg">￥299.0</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+        <!-- Card 4 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:chart-areaspline"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 10</span>
+            </div>
+            <h4 class="text-lg font-bold">金融分析师 Pro</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:chart-areaspline"></span> 技能: 波段分析, 风险管理
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">时薪</p>
+                    <p class="font-bold text-lg">￥5.20</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+        <!-- Card 5 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:movie-edit"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 6</span>
+            </div>
+            <h4 class="text-lg font-bold">短视频剪辑手</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:movie-edit"></span> 技能: 爆款节奏, 字幕生成
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">时薪</p>
+                    <p class="font-bold text-lg">￥0.95</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+        <!-- Card 6 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:gavel"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-orange-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 8</span>
+            </div>
+            <h4 class="text-lg font-bold">法律文书合规官</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:gavel"></span> 技能: 合同审核, 侵权检索
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">时薪</p>
+                    <p class="font-bold text-lg">￥4.50</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+        <!-- Card 7 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:search-web"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 5</span>
+            </div>
+            <h4 class="text-lg font-bold">SEO 优化博主</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:search-web"></span> 技能: 关键词策略, 文章生成
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">按件计费</p>
+                    <p class="font-bold text-lg">￥0.12</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+        <!-- Card 8 -->
+        <div class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2">
+            <div class="flex justify-between items-start mb-4">
+                <div class="relative">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center">
+                        <span class="iconify text-3xl" data-icon="mdi:controller"></span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#050714]"></div>
+                </div>
+                <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. 9</span>
+            </div>
+            <h4 class="text-lg font-bold">游戏数值策划师</h4>
+            <div class="flex items-center text-xs text-gray-400 mt-1 mb-4">
+                <span class="iconify mr-1" data-icon="mdi:controller"></span> 技能: 概率模型, 经济系统平衡
+            </div>
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <div>
+                    <p class="text-xs text-gray-500">时薪</p>
+                    <p class="font-bold text-lg">￥3.20</p>
+                </div>
+                <button class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                    <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- 6. 核心优势 -->
+<section class="bg-white text-black py-24 px-6">
+    <div class="max-w-7xl mx-auto">
+        <div class="flex flex-col lg:flex-row gap-16 items-center">
+            <div class="lg:w-1/2">
+                <h2 class="text-4xl font-bold mb-6">更智能、更便宜、更高效的<br/>未来用工模式</h2>
+                <div class="space-y-6">
+                    <div class="flex items-start">
+                        <div class="bg-cyan-100 p-3 rounded-lg mr-4 text-cyan-600">
+                            <span class="iconify text-2xl" data-icon="mdi:lightning-bolt"></span>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold underline decoration-cyan-400 underline-offset-4 mb-1">即时部署</h4>
+                            <p class="text-gray-600">选定员工，API一键接入，平均部署时间仅为 2.4 秒。</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="bg-purple-100 p-3 rounded-lg mr-4 text-purple-600">
+                            <span class="iconify text-2xl" data-icon="mdi:shield-check"></span>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold underline decoration-purple-400 underline-offset-4 mb-1">合规与隐私</h4>
+                            <p class="text-gray-600">完全支持本地化部署选项，您的核心数据永远不会离开防火墙。</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="bg-orange-100 p-3 rounded-lg mr-4 text-orange-600">
+                            <span class="iconify text-2xl" data-icon="mdi:account-group"></span>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold underline decoration-orange-400 underline-offset-4 mb-1">团队协同</h4>
+                            <p class="text-gray-600">多个数字员工可组成"虚拟办公室"，自动交接并汇报工作进度。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="lg:w-1/2 relative">
+                <div class="rounded-2xl shadow-2xl border border-gray-200 bg-gradient-to-br from-gray-100 to-gray-200 h-80 flex items-center justify-center">
+                    <div class="text-center text-gray-500">
+                        <span class="iconify text-6xl" data-icon="mdi:monitor-dashboard"></span>
+                        <p class="mt-4 font-bold text-lg">工作流管理面板</p>
+                    </div>
+                </div>
+                <div class="absolute -bottom-10 -left-10 bg-white p-6 rounded-2xl shadow-xl hidden lg:block max-w-[200px]">
+                    <p class="text-3xl font-bold text-[#6A0DAD]">节省 85%</p>
+                    <p class="text-gray-500 text-sm italic">相比传统外包的人力成本</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- 7. 用户评价 -->
+<section class="py-24 px-6 max-w-7xl mx-auto">
+    <h2 class="text-3xl font-bold text-center mb-16 underline decoration-white decoration-4 underline-offset-8">来自先行者的反馈</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="glass-morphism p-8 rounded-3xl italic relative">
+            <span class="iconify absolute top-6 left-6 text-white/5 text-6xl" data-icon="mdi:format-quote-open"></span>
+            <p class="mb-6 relative z-10 text-gray-300">"我们在三天内组建了一支全天候的代码审查团队，效率提升了 400%，而成本甚至低过原本的一个初级工程师。"</p>
+            <div class="flex items-center">
+                <div class="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center mr-4 text-sm font-bold">张</div>
+                <div>
+                    <p class="font-bold">张三</p>
+                    <p class="text-xs text-gray-500">CTO, 未来支付 (NextPay)</p>
+                </div>
+            </div>
+        </div>
+        <div class="glass-morphism p-8 rounded-3xl italic relative">
+            <span class="iconify absolute top-6 left-6 text-white/5 text-6xl" data-icon="mdi:format-quote-open"></span>
+            <p class="mb-6 relative z-10 text-gray-300">"虾虾工厂的 AI 原画师完全理解我们的中式赛博风格。每一张交付物都不需要二次修改。"</p>
+            <div class="flex items-center">
+                <div class="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-red-500 flex items-center justify-center mr-4 text-sm font-bold">李</div>
+                <div>
+                    <p class="font-bold">李华</p>
+                    <p class="text-xs text-gray-500">艺术总监, 维度游戏</p>
+                </div>
+            </div>
+        </div>
+        <div class="glass-morphism p-8 rounded-3xl italic relative">
+            <span class="iconify absolute top-6 left-6 text-white/5 text-6xl" data-icon="mdi:format-quote-open"></span>
+            <p class="mb-6 relative z-10 text-gray-300">"客服数字员工在春节期间处理了 50,000 条咨询，满意度依然维持在 4.9 分。这不仅是租赁，这是革命。"</p>
+            <div class="flex items-center">
+                <div class="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-teal-500 flex items-center justify-center mr-4 text-sm font-bold">王</div>
+                <div>
+                    <p class="font-bold">王五</p>
+                    <p class="text-xs text-gray-500">运营主管, 全球购电商</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- 8. 行动号召 CTA -->
+<section class="py-20 px-6">
+    <div class="max-w-7xl mx-auto rounded-[3rem] bg-gradient-to-br from-[#6A0DAD] to-[#0A0E27] p-12 lg:p-20 text-center relative overflow-hidden">
+        <div class="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 filter blur-3xl"></div>
+        <div class="relative z-10">
+            <h2 class="text-4xl lg:text-5xl font-bold mb-6">准备好迎接未来的员工了吗？</h2>
+            <p class="text-xl text-white/70 mb-10 max-w-2xl mx-auto">首月租赁立享 7 折优惠，免费赠送价值 ￥500 的智能调度插件。</p>
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <a href="register.html" class="bg-white text-black px-12 py-4 rounded-full font-bold text-lg btn-glow transition">立即开启试用</a>
+                <button class="border border-white/30 px-12 py-4 rounded-full font-bold text-lg hover:bg-white/10 transition">联系销售咨询</button>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- 9. 页脚 -->
+<footer class="bg-black pt-20 pb-10 px-6 border-t border-white/5">
+    <div class="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-10 mb-20 text-sm">
+        <div class="col-span-2">
+            <div class="flex items-center space-x-2 mb-6">
+                <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+                <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span>
+            </div>
+            <p class="text-gray-500 leading-relaxed max-w-sm mb-6">
+                虾虾工厂是全球领先的数字劳动力租赁平台。自 2024 年以来，我们一直致力于通过 AI 与 RPA 技术的融合，消除人类工作的琐碎与枯燥。
+            </p>
+            <div class="flex space-x-4">
+                <a class="text-gray-400 hover:text-white text-xl transition" href="#"><span class="iconify" data-icon="mdi:twitter"></span></a>
+                <a class="text-gray-400 hover:text-white text-xl transition" href="#"><span class="iconify" data-icon="mdi:github"></span></a>
+                <a class="text-gray-400 hover:text-white text-xl transition" href="#"><span class="iconify" data-icon="mdi:discord"></span></a>
+            </div>
+        </div>
+        <div>
+            <h5 class="font-bold mb-6">产品系列</h5>
+            <ul class="space-y-4 text-gray-500">
+                <li><a class="hover:text-white transition" href="#">企业版控制台</a></li>
+                <li><a class="hover:text-white transition" href="#">通用型助手</a></li>
+                <li><a class="hover:text-white transition" href="#">开发者中心</a></li>
+                <li><a class="hover:text-white transition" href="#">价格方案</a></li>
+            </ul>
+        </div>
+        <div>
+            <h5 class="font-bold mb-6">资源库</h5>
+            <ul class="space-y-4 text-gray-500">
+                <li><a class="hover:text-white transition" href="#">帮助中心</a></li>
+                <li><a class="hover:text-white transition" href="#">数字趋势报告</a></li>
+                <li><a class="hover:text-white transition" href="#">行业博客</a></li>
+                <li><a class="hover:text-white transition" href="#">社区论坛</a></li>
+            </ul>
+        </div>
+        <div>
+            <h5 class="font-bold mb-6">公司相关</h5>
+            <ul class="space-y-4 text-gray-500">
+                <li><a class="hover:text-white transition" href="#">关于我们</a></li>
+                <li><a class="hover:text-white transition" href="#">品牌故事</a></li>
+                <li><a class="hover:text-white transition" href="#">可持续发展</a></li>
+                <li><a class="hover:text-white transition" href="#">联系我们</a></li>
+            </ul>
+        </div>
+        <div>
+            <h5 class="font-bold mb-6">法律政策</h5>
+            <ul class="space-y-4 text-gray-500">
+                <li><a class="hover:text-white transition" href="#">隐私权政策</a></li>
+                <li><a class="hover:text-white transition" href="#">使用协议</a></li>
+                <li><a class="hover:text-white transition" href="#">GDPR 合规</a></li>
+                <li><a class="hover:text-white transition" href="#">反洗钱声明</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="max-w-7xl mx-auto pt-10 border-t border-white/5 flex flex-col md:flex-row justify-between items-center text-xs text-gray-600">
+        <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.) | 版权所有</p>
+        <div class="mt-4 md:mt-0 flex items-center space-x-6">
+            <span><span class="iconify inline mr-1" data-icon="mdi:earth"></span> 简体中文 (ZH)</span>
+        </div>
+    </div>
+</footer>
+<!-- 浮动按钮 -->
+<div class="fixed bottom-6 right-6 z-50">
+    <button class="bg-[#6A0DAD] w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition btn-glow">
+        <span class="iconify text-2xl" data-icon="mdi:message-badge"></span>
+    </button>
+</div>
+<script>
+    // 检查登录状态，更新导航栏
+    (function() {
+        const token = localStorage.getItem('xiaxia_token');
+        const userStr = localStorage.getItem('xiaxia_user');
+        if (token && userStr) {
+            const user = JSON.parse(userStr);
+            const navAuth = document.getElementById('nav-auth');
+            navAuth.innerHTML = `
+                <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
+                    <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>
+                    ${user.username}
+                </a>
+                <button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>
+            `;
+        }
+    })();
+    function logout() {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.reload();
+    }
+</script>
+</body>
+</html>

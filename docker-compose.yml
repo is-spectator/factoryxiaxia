@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: xiaxia-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secret_2026
+      MYSQL_DATABASE: xiaxia_factory
+      MYSQL_USER: xiaxia
+      MYSQL_PASSWORD: xiaxia_secret_2026
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: xiaxia-backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_USER: xiaxia
+      DB_PASS: xiaxia_secret_2026
+      DB_HOST: db
+      DB_NAME: xiaxia_factory
+      JWT_SECRET: xiaxia-jwt-secret-key-2026
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build: ./frontend
+    container_name: xiaxia-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "0.0.0.0:10088:80"
+
+volumes:
+  db_data:
