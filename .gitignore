@@ -203,4 +203,8 @@ dist
 .yarn/unplugged
 .yarn/build-state.yml
 .yarn/install-state.gz
-.pnp.*__pycache__/
+.pnp.*
+
+# Python
+__pycache__/
+*.pyc
