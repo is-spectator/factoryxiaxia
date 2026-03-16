@@ -393,7 +393,10 @@ def get_current_user():
     payload = verify_token(token)
     if not payload:
         return None
-    return User.query.get(payload["user_id"])
+    user = User.query.get(payload["user_id"])
+    if user and not user.is_active:
+        return None
+    return user
 
 
 def require_admin():
@@ -591,7 +594,10 @@ def create_order():
     if not worker_id or not duration_hours:
         return jsonify({"error": "请选择员工和租赁时长"}), 400
 
-    duration_hours = int(duration_hours)
+    try:
+        duration_hours = int(duration_hours)
+    except (ValueError, TypeError):
+        return jsonify({"error": "租赁时长必须为数字"}), 400
     if duration_hours < 1 or duration_hours > 8760:
         return jsonify({"error": "租赁时长应在1-8760小时之间"}), 400
 
@@ -1344,6 +1350,14 @@ def admin_delete_worker(worker_id):
     worker = Worker.query.get(worker_id)
     if not worker:
         return jsonify({"error": "数字员工不存在"}), 404
+
+    # 有关联订单时软删除（下架），否则物理删除
+    has_orders = Order.query.filter_by(worker_id=worker_id).first()
+    if has_orders:
+        worker.status = "offline"
+        worker.name = f"[已删除] {worker.name}" if not worker.name.startswith("[已删除]") else worker.name
+        db.session.commit()
+        return jsonify({"message": "该员工有历史订单，已下架处理"}), 200
 
     db.session.delete(worker)
     db.session.commit()
