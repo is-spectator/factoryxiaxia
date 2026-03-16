@@ -11,6 +11,7 @@
 | 阶段一：基础骨架 | ✅ 已完成 | 官网 + 用户系统 + Docker 部署 |
 | 阶段二：核心业务 | ✅ 已完成 | 数字员工目录 + 租赁流程 |
 | 阶段三：管理后台 | ✅ 已完成 | 权限模型 + 数据看板 + CRUD 管理 |
+| 阶段四：支付与订单生命周期 | ✅ 已完成 | 状态机 + 模拟支付 + 退款 + 超时取消 |
 | 阶段三：管理后台 | ⬜ 待开始 | 运营管理 + 数据看板 |
 | 阶段四：支付与订单 | ⬜ 待开始 | 支付集成 + 订单生命周期 |
 | 阶段五：增值功能 | ⬜ 待开始 | 评价 + 消息 + 推荐 |
@@ -164,24 +165,47 @@
 
 ### To-Do List
 
-- [ ] 订单状态机设计（pending → paid → active → completed / refunded / cancelled）
-- [ ] 支付接口抽象层（方便后续接入支付宝/微信支付）
-- [ ] API — 模拟支付（POST /api/orders/:id/pay，开发环境用）
-- [ ] API — 取消订单（POST /api/orders/:id/cancel）
-- [ ] API — 申请退款（POST /api/orders/:id/refund）
-- [ ] API — 确认完成（POST /api/orders/:id/complete）
-- [ ] 前端 — 支付确认页（pay.html — 展示订单摘要、支付按钮）
-- [ ] 前端 — 订单状态流转可视化（进度条/时间线组件）
-- [ ] 支付回调处理 + 幂等性保证
-- [ ] 订单超时自动取消（后台定时任务）
-- [ ] 数据库 — 支付记录表（payments）
+- [x] 订单状态机设计（ORDER_TRANSITIONS: pending→paid→active→completed / refunded / cancelled）
+- [x] 支付接口抽象层（method 字段支持 mock/alipay/wechat，可扩展）
+- [x] API — 模拟支付（POST /api/orders/:id/pay，幂等性保证）
+- [x] API — 开始服务（POST /api/orders/:id/activate，paid→active）
+- [x] API — 取消订单（POST /api/orders/:id/cancel，pending→cancelled）
+- [x] API — 申请退款（POST /api/orders/:id/refund，paid/active→refunded）
+- [x] API — 确认完成（POST /api/orders/:id/complete，active→completed）
+- [x] API — 查看支付记录（GET /api/orders/:id/payments）
+- [x] API — 超时取消（POST /api/orders/cancel-expired，管理员触发）
+- [x] 前端 — 支付确认页（pay.html — 订单摘要 + 支付方式选择 + 支付成功弹窗）
+- [x] 前端 — 订单详情页（order-detail.html — 状态时间线 + 操作按钮 + 支付记录）
+- [x] 数据库 — Payment 模型 + payments 表 + Order 新增时间戳字段
 
 ### 核心交付物
 
-| 交付物 | 说明 |
+| 交付物 | 文件 |
 |--------|------|
-| 完整订单生命周期 | 6 种状态流转，前端可视化 |
-| 支付模块 | 抽象层 + 模拟支付（可扩展真实支付） |
+| 状态机 + 6种状态流转 | `backend/app.py` (ORDER_TRANSITIONS) |
+| 支付模块（模拟+可扩展） | `backend/app.py` (pay_order + Payment 模型) |
+| 退款流程 | `backend/app.py` (refund_order) |
+| 超时取消 | `backend/app.py` (cancel_expired_orders) |
+| 支付确认页 | `frontend/pay.html` |
+| 订单详情+状态可视化 | `frontend/order-detail.html` |
+
+### 测试报告
+
+**测试时间**：2026-03-16 | **测试方式**：自动化 API 测试（SQLite 替代 MySQL）| **结果**：✅ 45/45 通过，0 失败
+
+| 测试模块 | 测试项数 | 结果 | 测试内容 |
+|----------|----------|------|----------|
+| 状态机校验 | 3 | ✅ | pending 无法直接 complete/refund/activate |
+| 模拟支付 | 10 | ✅ | 支付→200+paid+paid_at、payment_no/amount/method/status 正确、幂等重复支付→200、无token→401 |
+| 支付记录 | 2 | ✅ | 列表200、至少1条记录 |
+| 激活服务 | 3 | ✅ | paid→active 成功、active→pay 拒绝 |
+| 确认完成 | 5 | ✅ | active→completed+completed_at、completed 后无法 refund/cancel |
+| 退款流程 | 5 | ✅ | paid→refunded+refunded_at、支付记录标记 refunded、refunded 后无法 activate |
+| 取消订单 | 4 | ✅ | pending→cancelled+cancelled_at、cancelled 后无法 pay |
+| 超时取消 | 4 | ✅ | 普通用户→403、管理员→取消1个超时订单、确认状态=cancelled |
+| Order 新字段 | 4 | ✅ | paid_at/completed_at/cancelled_at/refunded_at 存在 |
+| 前端页面 | 2 | ✅ | pay.html / order-detail.html 存在 |
+| **合计** | **45** | **✅ 全部通过** | |
 | 退款流程 | 用户申请 → 管理员审核 → 退款 |
 | 定时任务 | 超时未支付订单自动取消 |
 

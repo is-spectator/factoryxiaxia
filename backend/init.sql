@@ -56,10 +56,30 @@ CREATE TABLE IF NOT EXISTS orders (
     total_amount DECIMAL(10,2) NOT NULL,
     status VARCHAR(20) DEFAULT 'pending',
     remark TEXT DEFAULT NULL,
+    paid_at DATETIME DEFAULT NULL,
+    completed_at DATETIME DEFAULT NULL,
+    cancelled_at DATETIME DEFAULT NULL,
+    refunded_at DATETIME DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (worker_id) REFERENCES workers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 支付记录表
+CREATE TABLE IF NOT EXISTS payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    payment_no VARCHAR(40) NOT NULL UNIQUE,
+    order_id INT NOT NULL,
+    user_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    method VARCHAR(30) DEFAULT 'mock',
+    status VARCHAR(20) DEFAULT 'success',
+    paid_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    refunded_at DATETIME DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ===== 种子数据：分类 =====

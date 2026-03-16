@@ -130,6 +130,16 @@ class Worker(db.Model):
 
 ORDER_STATUSES = ["pending", "paid", "active", "completed", "cancelled", "refunded"]
 
+# 订单状态机: 当前状态 → 允许的目标状态
+ORDER_TRANSITIONS = {
+    "pending":   ["paid", "cancelled"],
+    "paid":      ["active", "refunded"],
+    "active":    ["completed", "refunded"],
+    "completed": [],
+    "cancelled": [],
+    "refunded":  [],
+}
+
 
 class Order(db.Model):
     __tablename__ = "orders"
@@ -141,6 +151,10 @@ class Order(db.Model):
     total_amount = db.Column(db.Numeric(10, 2), nullable=False)
     status = db.Column(db.String(20), default="pending")
     remark = db.Column(db.Text, default="")
+    paid_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    cancelled_at = db.Column(db.DateTime, nullable=True)
+    refunded_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -161,8 +175,40 @@ class Order(db.Model):
             "total_amount": float(self.total_amount),
             "status": self.status,
             "remark": self.remark,
+            "paid_at": self.paid_at.isoformat() if self.paid_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "cancelled_at": self.cancelled_at.isoformat() if self.cancelled_at else None,
+            "refunded_at": self.refunded_at.isoformat() if self.refunded_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class Payment(db.Model):
+    __tablename__ = "payments"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    payment_no = db.Column(db.String(40), unique=True, nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    method = db.Column(db.String(30), default="mock")  # mock/alipay/wechat
+    status = db.Column(db.String(20), default="success")  # success/failed/refunded
+    paid_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    refunded_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    order = db.relationship("Order", backref="payments", lazy=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "payment_no": self.payment_no,
+            "order_id": self.order_id,
+            "amount": float(self.amount),
+            "method": self.method,
+            "status": self.status,
+            "paid_at": self.paid_at.isoformat() if self.paid_at else None,
+            "refunded_at": self.refunded_at.isoformat() if self.refunded_at else None,
         }
 
 
@@ -212,6 +258,12 @@ def generate_order_no():
     now = datetime.datetime.utcnow()
     import random
     return now.strftime("XF%Y%m%d%H%M%S") + str(random.randint(1000, 9999))
+
+
+def generate_payment_no():
+    now = datetime.datetime.utcnow()
+    import random
+    return now.strftime("PAY%Y%m%d%H%M%S") + str(random.randint(100000, 999999))
 
 
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
@@ -453,13 +505,178 @@ def cancel_order(order_id):
         return jsonify({"error": "订单不存在"}), 404
     if order.user_id != user.id:
         return jsonify({"error": "无权操作此订单"}), 403
-    if order.status not in ("pending",):
+    if "cancelled" not in ORDER_TRANSITIONS.get(order.status, []):
         return jsonify({"error": "当前状态无法取消"}), 400
 
     order.status = "cancelled"
+    order.cancelled_at = datetime.datetime.utcnow()
     db.session.commit()
 
     return jsonify({"message": "订单已取消", "order": order.to_dict()}), 200
+
+
+@app.route("/api/orders/<int:order_id>/pay", methods=["POST"])
+def pay_order(order_id):
+    """模拟支付（开发环境）"""
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权操作此订单"}), 403
+
+    # 幂等性：已支付状态 + 有成功支付记录，直接返回
+    if order.status == "paid":
+        existing = Payment.query.filter_by(order_id=order.id, status="success").first()
+        if existing:
+            return jsonify({"message": "已支付", "order": order.to_dict(), "payment": existing.to_dict()}), 200
+
+    if "paid" not in ORDER_TRANSITIONS.get(order.status, []):
+        return jsonify({"error": f"当前状态({order.status})无法支付"}), 400
+
+    data = request.get_json(silent=True) or {}
+    method = data.get("method", "mock")
+    if method not in ("mock", "alipay", "wechat"):
+        method = "mock"
+
+    now = datetime.datetime.utcnow()
+    payment = Payment(
+        payment_no=generate_payment_no(),
+        order_id=order.id,
+        user_id=user.id,
+        amount=order.total_amount,
+        method=method,
+        status="success",
+        paid_at=now,
+    )
+    order.status = "paid"
+    order.paid_at = now
+
+    db.session.add(payment)
+    db.session.commit()
+
+    return jsonify({
+        "message": "支付成功",
+        "order": order.to_dict(),
+        "payment": payment.to_dict(),
+    }), 200
+
+
+@app.route("/api/orders/<int:order_id>/activate", methods=["POST"])
+def activate_order(order_id):
+    """开始服务（paid → active）"""
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权操作此订单"}), 403
+    if "active" not in ORDER_TRANSITIONS.get(order.status, []):
+        return jsonify({"error": f"当前状态({order.status})无法激活服务"}), 400
+
+    order.status = "active"
+    db.session.commit()
+
+    return jsonify({"message": "服务已开始", "order": order.to_dict()}), 200
+
+
+@app.route("/api/orders/<int:order_id>/complete", methods=["POST"])
+def complete_order(order_id):
+    """确认完成（active → completed）"""
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权操作此订单"}), 403
+    if "completed" not in ORDER_TRANSITIONS.get(order.status, []):
+        return jsonify({"error": f"当前状态({order.status})无法完成"}), 400
+
+    order.status = "completed"
+    order.completed_at = datetime.datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({"message": "服务已完成", "order": order.to_dict()}), 200
+
+
+@app.route("/api/orders/<int:order_id>/refund", methods=["POST"])
+def refund_order(order_id):
+    """申请退款（paid/active → refunded）"""
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权操作此订单"}), 403
+    if "refunded" not in ORDER_TRANSITIONS.get(order.status, []):
+        return jsonify({"error": f"当前状态({order.status})无法退款"}), 400
+
+    now = datetime.datetime.utcnow()
+    order.status = "refunded"
+    order.refunded_at = now
+
+    # 标记支付记录为已退款
+    payment = Payment.query.filter_by(order_id=order.id, status="success").first()
+    if payment:
+        payment.status = "refunded"
+        payment.refunded_at = now
+
+    db.session.commit()
+
+    return jsonify({"message": "退款成功", "order": order.to_dict()}), 200
+
+
+@app.route("/api/orders/<int:order_id>/payments", methods=["GET"])
+def get_order_payments(order_id):
+    """查看订单的支付记录"""
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权查看"}), 403
+
+    payments = Payment.query.filter_by(order_id=order.id).order_by(Payment.created_at.desc()).all()
+    return jsonify({"payments": [p.to_dict() for p in payments]}), 200
+
+
+@app.route("/api/orders/cancel-expired", methods=["POST"])
+def cancel_expired_orders():
+    """定时任务：取消超时未支付订单（创建超过30分钟仍为pending）"""
+    # 可被 cron/APScheduler 调用，也可由管理员手动触发
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=30)
+    expired = Order.query.filter(
+        Order.status == "pending",
+        Order.created_at < cutoff,
+    ).all()
+
+    count = 0
+    for order in expired:
+        order.status = "cancelled"
+        order.cancelled_at = datetime.datetime.utcnow()
+        count += 1
+
+    db.session.commit()
+    return jsonify({"message": f"已取消 {count} 个超时订单", "cancelled_count": count}), 200
 
 
 # ===== 管理后台 API =====
