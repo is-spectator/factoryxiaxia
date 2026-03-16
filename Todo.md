@@ -45,6 +45,18 @@
 | 数据库脚本 | `backend/init.sql` |
 | 部署配置 | `docker-compose.yml`, `deploy.sh` |
 
+### 测试报告
+
+**测试时间**：2026-03-16 | **测试方式**：阶段二测试脚本中包含阶段一用户系统回归测试 | **结果**：✅ 通过
+
+| 测试模块 | 结果 | 测试内容 |
+|----------|------|----------|
+| 用户注册 | ✅ | POST /api/register → 201，返回 token + user |
+| 用户登录 | ✅ | POST /api/login → 200，支持用户名/邮箱登录 |
+| JWT 认证 | ✅ | 无 token 访问受保护接口 → 401 |
+| 前端页面 | ✅ | index.html / login.html / register.html / profile.html 文件存在 |
+| 部署配置 | ✅ | docker-compose.yml / deploy.sh / Dockerfile / nginx.conf 完整 |
+
 ---
 
 ## 阶段二：核心业务 — 数字员工目录与租赁
@@ -71,13 +83,32 @@
 
 ### 核心交付物
 
-| 交付物 | 说明 |
+| 交付物 | 文件 |
 |--------|------|
-| 数字员工目录页 | 可浏览、搜索、按分类筛选数字员工 |
-| 数字员工详情页 | 展示技能详情，提供租赁入口 |
-| 租赁下单流程 | 选择员工 → 选择时长 → 确认下单 |
-| 我的订单页 | 查看历史订单及状态 |
-| 5 个新 API | workers CRUD + orders CRUD |
+| 数字员工目录页 | `frontend/workers.html` |
+| 数字员工详情页 | `frontend/worker-detail.html` |
+| 租赁下单页 | `frontend/order-create.html` |
+| 我的订单页 | `frontend/orders.html` |
+| 后端 API（7 个新接口） | `backend/app.py` |
+| 数据库脚本（含种子数据） | `backend/init.sql` |
+
+### 测试报告
+
+**测试时间**：2026-03-16 | **测试方式**：自动化 API 测试（SQLite 替代 MySQL）| **结果**：✅ 45/45 通过，0 失败
+
+| 测试模块 | 测试项数 | 结果 | 测试内容 |
+|----------|----------|------|----------|
+| 用户注册/登录 | 3 | ✅ | 注册 201、返回 token、登录 200 |
+| 分类 API | 3 | ✅ | 列表 200、返回 4 个分类、包含 worker_count 字段 |
+| 员工列表 API | 11 | ✅ | 基础列表、分类筛选（category_id=1→4人）、状态筛选（busy→1人）、关键词搜索（Python→≥1）、价格升序排序、评分降序排序、分页（per_page=3→3条/页≥3页） |
+| 员工详情 API | 6 | ✅ | 200 响应、name/skills/description/category_name 字段完整、不存在→404 |
+| 创建订单 API | 8 | ✅ | 无 token→401、创建→201、order_no 生成、金额计算（1.80×24=43.2）、状态 pending、含 worker_name、第二个订单→201、离线员工→400 拒绝 |
+| 我的订单 API | 3 | ✅ | 列表 200、返回 2 个订单、pending 状态筛选 |
+| 订单详情 API | 2 | ✅ | 详情 200、包含 order_no |
+| 取消订单 API | 2 | ✅ | 取消→200 状态变 cancelled、重复取消→400 |
+| 前端页面文件 | 4 | ✅ | workers.html / worker-detail.html / order-create.html / orders.html 存在 |
+| Health 检查 | 1 | ✅ | /api/health → 200 |
+| **合计** | **45** | **✅ 全部通过** | |
 
 ---
 
