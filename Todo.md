@@ -10,6 +10,7 @@
 |------|------|------|
 | 阶段一：基础骨架 | ✅ 已完成 | 官网 + 用户系统 + Docker 部署 |
 | 阶段二：核心业务 | ✅ 已完成 | 数字员工目录 + 租赁流程 |
+| 阶段三：管理后台 | ✅ 已完成 | 权限模型 + 数据看板 + CRUD 管理 |
 | 阶段三：管理后台 | ⬜ 待开始 | 运营管理 + 数据看板 |
 | 阶段四：支付与订单 | ⬜ 待开始 | 支付集成 + 订单生命周期 |
 | 阶段五：增值功能 | ⬜ 待开始 | 评价 + 消息 + 推荐 |
@@ -118,28 +119,42 @@
 
 ### To-Do List
 
-- [ ] 后台权限模型（角色表 roles、用户角色关联，区分 admin/operator/user）
-- [ ] 后台认证中间件（角色校验装饰器）
-- [ ] API — 管理员登录（复用登录接口 + 角色校验）
-- [ ] API — 用户管理（GET/PUT/DELETE /api/admin/users）
-- [ ] API — 数字员工管理（CRUD /api/admin/workers）
-- [ ] API — 订单管理（GET /api/admin/orders，支持状态变更）
-- [ ] API — 数据统计（GET /api/admin/stats — 注册数、订单数、营收）
-- [ ] 前端 — 后台布局框架（admin.html — 侧边栏 + 顶栏 + 内容区）
-- [ ] 前端 — 数据看板页（dashboard — 折线图、饼图、关键指标卡片）
-- [ ] 前端 — 用户管理页（用户列表、搜索、禁用/启用）
-- [ ] 前端 — 数字员工管理页（新增/编辑/上下架）
-- [ ] 前端 — 订单管理页（订单列表、状态筛选、详情查看）
+- [x] 后台权限模型（User 表新增 role/is_active 字段，区分 admin/operator/user）
+- [x] 后台认证中间件（require_admin() 角色校验函数）
+- [x] API — 管理员登录（复用登录接口 + token 包含 role）
+- [x] API — 用户管理（GET/PUT/DELETE /api/admin/users）
+- [x] API — 数字员工管理（CRUD /api/admin/workers）
+- [x] API — 订单管理（GET /api/admin/orders，PUT /api/admin/orders/:id/status）
+- [x] API — 数据统计（GET /api/admin/stats — 注册数、订单数、营收、7天趋势、分类占比）
+- [x] 前端 — 后台布局框架（admin.html — 侧边栏 + 顶栏 + 内容区）
+- [x] 前端 — 数据看板页（Chart.js 折线图 + 环形图 + 7 张指标卡片）
+- [x] 前端 — 用户管理页（admin-users.html — 列表、搜索、角色切换、禁用/启用）
+- [x] 前端 — 数字员工管理页（admin-workers.html — 新增/编辑弹窗、上下架、删除）
+- [x] 前端 — 订单管理页（admin-orders.html — 列表、状态筛选、状态变更）
 
 ### 核心交付物
 
-| 交付物 | 说明 |
+| 交付物 | 文件 |
 |--------|------|
-| 管理后台框架 | 统一布局，角色权限控制 |
-| 数据看板 | 核心经营指标可视化（用 Chart.js 或 ECharts） |
-| 用户管理 | 查看、搜索、禁用用户 |
-| 数字员工管理 | 完整 CRUD + 上下架 |
-| 订单管理 | 查看、筛选、状态流转 |
+| 数据看板 | `frontend/admin.html` |
+| 用户管理 | `frontend/admin-users.html` |
+| 员工管理 | `frontend/admin-workers.html` |
+| 订单管理 | `frontend/admin-orders.html` |
+| Admin API（8 个新接口） | `backend/app.py` |
+
+### 测试报告
+
+**测试时间**：2026-03-16 | **测试方式**：自动化 API 测试（SQLite 替代 MySQL）| **结果**：✅ 56/56 通过，0 失败
+
+| 测试模块 | 测试项数 | 结果 | 测试内容 |
+|----------|----------|------|----------|
+| 权限校验 | 4 | ✅ | 普通用户→403、管理员→200、运营→200、无token→403 |
+| 数据统计 API | 9 | ✅ | total_users/workers/orders 正确、daily_orders 7天数组、category_stats、pending/active/online 指标 |
+| 用户管理 API | 10 | ✅ | 列表200、搜索、角色筛选、修改角色→operator、禁用用户、不能禁用自己→400、operator不能授予admin→403、删除（有订单→禁用）、不能删除自己→400 |
+| 员工管理 CRUD | 11 | ✅ | 列表、新增→201、编辑（名称+状态更新）、缺少必填→400、状态筛选、关键词筛选、删除→200、删除不存在→404 |
+| 订单管理 API | 7 | ✅ | 列表200、包含username、pending筛选、订单号搜索、状态变更→paid、无效状态→400 |
+| 前端页面文件 | 4 | ✅ | admin.html / admin-users.html / admin-workers.html / admin-orders.html 存在 |
+| **合计** | **56** | **✅ 全部通过** | |
 
 ---
 
