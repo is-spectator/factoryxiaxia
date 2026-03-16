@@ -107,6 +107,7 @@ function logout() { localStorage.removeItem('xiaxia_token'); localStorage.remove
 let currentPage = 1;
 let categories = [];
 const statusLabel = { online: '<span class="text-green-400">在线</span>', busy: '<span class="text-orange-400">忙碌</span>', offline: '<span class="text-gray-500">离线</span>' };
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') loadWorkers(); });
 
@@ -137,10 +138,10 @@ async function loadWorkers() {
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,${w.avatar_gradient_from},${w.avatar_gradient_to})">
                         <span class="iconify text-sm" data-icon="${w.avatar_icon}"></span>
                     </div>
-                    <span class="font-medium">${w.name}</span>
+                    <span class="font-medium">${esc(w.name)}</span>
                 </div>
             </td>
-            <td class="px-4 py-3 text-gray-400 text-xs">${w.category_name}</td>
+            <td class="px-4 py-3 text-gray-400 text-xs">${esc(w.category_name)}</td>
             <td class="px-4 py-3">Lv.${w.level}</td>
             <td class="px-4 py-3">￥${w.hourly_rate.toFixed(2)}</td>
             <td class="px-4 py-3">${statusLabel[w.status] || w.status}</td>
@@ -149,7 +150,7 @@ async function loadWorkers() {
             <td class="px-4 py-3 space-x-2">
                 <button onclick="editWorker(${w.id})" class="text-xs text-cyan-400 hover:text-cyan-300">编辑</button>
                 <button onclick="toggleStatus(${w.id},'${w.status}')" class="text-xs ${w.status==='offline'?'text-green-400':'text-orange-400'} hover:opacity-80">${w.status==='offline'?'上架':'下架'}</button>
-                <button onclick="deleteWorker(${w.id},'${w.name}')" class="text-xs text-red-400 hover:text-red-300">删除</button>
+                <button onclick="deleteWorker(${w.id})" class="text-xs text-red-400 hover:text-red-300">删除</button>
             </td>
         </tr>
     `).join('') || '<tr><td colspan="9" class="text-center py-10 text-gray-500">暂无员工</td></tr>';
@@ -225,8 +226,8 @@ async function toggleStatus(id, current) {
     loadWorkers();
 }
 
-async function deleteWorker(id, name) {
-    if (!confirm(`确定删除「${name}」？`)) return;
+async function deleteWorker(id) {
+    if (!confirm(`确定删除该员工？`)) return;
     await fetch(`/api/admin/workers/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
     loadWorkers();
 }

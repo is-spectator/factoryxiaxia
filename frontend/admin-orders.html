@@ -81,6 +81,7 @@ const statusConf = {
     refunded:  { label: '已退款', cls: 'bg-orange-500/20 text-orange-400' },
 };
 
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') loadOrders(); });
 
 async function loadOrders() {
@@ -98,14 +99,14 @@ async function loadOrders() {
         const sc = statusConf[o.status] || statusConf.pending;
         return `
         <tr class="hover:bg-white/5">
-            <td class="px-4 py-3 font-mono text-xs">${o.order_no}</td>
-            <td class="px-4 py-3">${o.username || '-'}</td>
+            <td class="px-4 py-3 font-mono text-xs">${esc(o.order_no)}</td>
+            <td class="px-4 py-3">${esc(o.username || '-')}</td>
             <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
                     <div class="w-6 h-6 rounded flex items-center justify-center" style="background:linear-gradient(135deg,${o.worker_gradient_from||'#6A0DAD'},${o.worker_gradient_to||'#00D2FF'})">
                         <span class="iconify text-xs" data-icon="${o.worker_icon||'mdi:robot-happy-outline'}"></span>
                     </div>
-                    <span class="text-xs">${o.worker_name || '-'}</span>
+                    <span class="text-xs">${esc(o.worker_name || '-')}</span>
                 </div>
             </td>
             <td class="px-4 py-3">${o.duration_hours}h</td>

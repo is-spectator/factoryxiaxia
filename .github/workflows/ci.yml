@@ -25,8 +25,13 @@ jobs:
 
       - name: Run tests
         env:
-          DATABASE_URL: "sqlite:///test.db"
+          DB_USER: "x"
+          DB_PASS: "x"
+          DB_HOST: "x"
+          DB_NAME: "x"
           JWT_SECRET: "ci-test-secret"
+          RATE_LIMIT_DEFAULT: "9999/minute"
+          RATE_LIMIT_AUTH: "9999/minute"
         run: |
           cd backend
           python -m pytest tests/ -v --tb=short
