@@ -15,6 +15,7 @@ import jwt
 
 # ===== 结构化日志 =====
 
+
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log_entry = {
@@ -26,6 +27,7 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info and record.exc_info[0]:
             log_entry["exception"] = traceback.format_exception(*record.exc_info)
         return json.dumps(log_entry, ensure_ascii=False)
+
 
 handler = logging.StreamHandler()
 handler.setFormatter(JsonFormatter())
@@ -62,6 +64,7 @@ limiter = Limiter(
 
 # ===== 安全响应头 + 请求日志 =====
 
+
 @app.after_request
 def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -75,11 +78,13 @@ def add_security_headers(response):
     logger.info(f"{request.method} {request.path} → {response.status_code}{duration}")
     return response
 
+
 @app.before_request
 def before_request_hook():
     g.request_start = datetime.datetime.utcnow()
 
 # ===== 全局异常处理 + 告警 =====
+
 
 def send_alert(title, detail=""):
     """发送异常告警到 Webhook（钉钉/飞书/Slack）"""
@@ -97,11 +102,13 @@ def send_alert(title, detail=""):
     except Exception:
         logger.warning("告警发送失败")
 
+
 @app.errorhandler(500)
 def handle_500(e):
     logger.error(f"Internal Server Error: {e}", exc_info=True)
     send_alert("500 Internal Server Error", f"{request.method} {request.path}\n{e}")
     return jsonify({"error": "服务器内部错误"}), 500
+
 
 @app.errorhandler(429)
 def handle_429(e):
@@ -215,12 +222,12 @@ ORDER_STATUSES = ["pending", "paid", "active", "completed", "cancelled", "refund
 
 # 订单状态机: 当前状态 → 允许的目标状态
 ORDER_TRANSITIONS = {
-    "pending":   ["paid", "cancelled"],
-    "paid":      ["active", "refunded"],
-    "active":    ["completed", "refunded"],
+    "pending": ["paid", "cancelled"],
+    "paid": ["active", "refunded"],
+    "active": ["completed", "refunded"],
     "completed": [],
     "cancelled": [],
-    "refunded":  [],
+    "refunded": [],
 }
 
 
@@ -1324,7 +1331,7 @@ def admin_update_worker(worker_id):
 
     data = request.get_json(silent=True) or {}
     for field in ["name", "avatar_icon", "avatar_gradient_from", "avatar_gradient_to",
-                   "skills", "description", "billing_unit", "status"]:
+                  "skills", "description", "billing_unit", "status"]:
         if field in data:
             setattr(worker, field, data[field])
     if "category_id" in data:
@@ -1456,35 +1463,35 @@ def api_docs():
             }
         },
         "paths": {
-            "/register": {"post": {"tags": ["用户"], "summary": "用户注册", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["username","email","password","confirm_password"], "properties": {"username": {"type":"string"}, "email": {"type":"string"}, "password": {"type":"string"}, "confirm_password": {"type":"string"}}}}}}, "responses": {"201": {"description": "注册成功"}}}},
-            "/login": {"post": {"tags": ["用户"], "summary": "用户登录", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["login_id","password"], "properties": {"login_id": {"type":"string"}, "password": {"type":"string"}}}}}}, "responses": {"200": {"description": "登录成功"}}}},
+            "/register": {"post": {"tags": ["用户"], "summary": "用户注册", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["username", "email", "password", "confirm_password"], "properties": {"username": {"type": "string"}, "email": {"type": "string"}, "password": {"type": "string"}, "confirm_password": {"type": "string"}}}}}}, "responses": {"201": {"description": "注册成功"}}}},
+            "/login": {"post": {"tags": ["用户"], "summary": "用户登录", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["login_id", "password"], "properties": {"login_id": {"type": "string"}, "password": {"type": "string"}}}}}}, "responses": {"200": {"description": "登录成功"}}}},
             "/profile": {"get": {"tags": ["用户"], "summary": "获取个人信息", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
             "/categories": {"get": {"tags": ["分类"], "summary": "分类列表", "responses": {"200": {"description": "成功"}}}},
-            "/workers": {"get": {"tags": ["员工"], "summary": "员工列表", "parameters": [{"name":"page","in":"query","schema":{"type":"integer"}}, {"name":"per_page","in":"query","schema":{"type":"integer"}}, {"name":"category_id","in":"query","schema":{"type":"integer"}}, {"name":"status","in":"query","schema":{"type":"string"}}, {"name":"keyword","in":"query","schema":{"type":"string"}}, {"name":"sort_by","in":"query","schema":{"type":"string"}}], "responses": {"200": {"description": "成功"}}}},
-            "/workers/{id}": {"get": {"tags": ["员工"], "summary": "员工详情", "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/workers/{id}/reviews": {"get": {"tags": ["评价"], "summary": "员工评价列表", "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders": {"post": {"tags": ["订单"], "summary": "创建订单", "security": [{"BearerAuth": []}], "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["worker_id","duration_hours"], "properties": {"worker_id": {"type":"integer"}, "duration_hours": {"type":"integer"}, "remark": {"type":"string"}}}}}}, "responses": {"201": {"description": "下单成功"}}}, "get": {"tags": ["订单"], "summary": "我的订单列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}": {"get": {"tags": ["订单"], "summary": "订单详情", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/pay": {"post": {"tags": ["支付"], "summary": "模拟支付", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "支付成功"}}}},
-            "/orders/{id}/activate": {"post": {"tags": ["订单"], "summary": "开始服务", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/complete": {"post": {"tags": ["订单"], "summary": "确认完成", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/refund": {"post": {"tags": ["支付"], "summary": "申请退款", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/cancel": {"post": {"tags": ["订单"], "summary": "取消订单", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/review": {"post": {"tags": ["评价"], "summary": "提交评价", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "requestBody": {"content": {"application/json": {"schema": {"type":"object","required":["rating"],"properties":{"rating":{"type":"integer","minimum":1,"maximum":5},"content":{"type":"string"}}}}}}, "responses": {"201": {"description": "评价成功"}}}},
-            "/orders/{id}/payments": {"get": {"tags": ["支付"], "summary": "订单支付记录", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/messages": {"get": {"tags": ["消息"], "summary": "消息列表", "security": [{"BearerAuth": []}], "parameters": [{"name":"is_read","in":"query","schema":{"type":"string"}}], "responses": {"200": {"description": "成功"}}}},
-            "/messages/{id}/read": {"post": {"tags": ["消息"], "summary": "标记已读", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/workers": {"get": {"tags": ["员工"], "summary": "员工列表", "parameters": [{"name": "page", "in": "query", "schema": {"type": "integer"}}, {"name": "per_page", "in": "query", "schema": {"type": "integer"}}, {"name": "category_id", "in": "query", "schema": {"type": "integer"}}, {"name": "status", "in": "query", "schema": {"type": "string"}}, {"name": "keyword", "in": "query", "schema": {"type": "string"}}, {"name": "sort_by", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "成功"}}}},
+            "/workers/{id}": {"get": {"tags": ["员工"], "summary": "员工详情", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/workers/{id}/reviews": {"get": {"tags": ["评价"], "summary": "员工评价列表", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders": {"post": {"tags": ["订单"], "summary": "创建订单", "security": [{"BearerAuth": []}], "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["worker_id", "duration_hours"], "properties": {"worker_id": {"type": "integer"}, "duration_hours": {"type": "integer"}, "remark": {"type": "string"}}}}}}, "responses": {"201": {"description": "下单成功"}}}, "get": {"tags": ["订单"], "summary": "我的订单列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}": {"get": {"tags": ["订单"], "summary": "订单详情", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/pay": {"post": {"tags": ["支付"], "summary": "模拟支付", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "支付成功"}}}},
+            "/orders/{id}/activate": {"post": {"tags": ["订单"], "summary": "开始服务", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/complete": {"post": {"tags": ["订单"], "summary": "确认完成", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/refund": {"post": {"tags": ["支付"], "summary": "申请退款", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/cancel": {"post": {"tags": ["订单"], "summary": "取消订单", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/review": {"post": {"tags": ["评价"], "summary": "提交评价", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["rating"], "properties": {"rating": {"type": "integer", "minimum": 1, "maximum": 5}, "content": {"type": "string"}}}}}}, "responses": {"201": {"description": "评价成功"}}}},
+            "/orders/{id}/payments": {"get": {"tags": ["支付"], "summary": "订单支付记录", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/messages": {"get": {"tags": ["消息"], "summary": "消息列表", "security": [{"BearerAuth": []}], "parameters": [{"name": "is_read", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "成功"}}}},
+            "/messages/{id}/read": {"post": {"tags": ["消息"], "summary": "标记已读", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
             "/messages/read-all": {"post": {"tags": ["消息"], "summary": "全部已读", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
             "/messages/unread-count": {"get": {"tags": ["消息"], "summary": "未读数", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
             "/favorites": {"get": {"tags": ["收藏"], "summary": "收藏列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/favorites/{worker_id}": {"post": {"tags": ["收藏"], "summary": "收藏员工", "security": [{"BearerAuth": []}], "parameters": [{"name":"worker_id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"201": {"description": "成功"}}}, "delete": {"tags": ["收藏"], "summary": "取消收藏", "security": [{"BearerAuth": []}], "parameters": [{"name":"worker_id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/favorites/{worker_id}/check": {"get": {"tags": ["收藏"], "summary": "检查收藏状态", "security": [{"BearerAuth": []}], "parameters": [{"name":"worker_id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/favorites/{worker_id}": {"post": {"tags": ["收藏"], "summary": "收藏员工", "security": [{"BearerAuth": []}], "parameters": [{"name": "worker_id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"201": {"description": "成功"}}}, "delete": {"tags": ["收藏"], "summary": "取消收藏", "security": [{"BearerAuth": []}], "parameters": [{"name": "worker_id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/favorites/{worker_id}/check": {"get": {"tags": ["收藏"], "summary": "检查收藏状态", "security": [{"BearerAuth": []}], "parameters": [{"name": "worker_id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
             "/recommendations": {"get": {"tags": ["推荐"], "summary": "智能推荐员工", "responses": {"200": {"description": "成功"}}}},
             "/admin/stats": {"get": {"tags": ["管理后台"], "summary": "数据统计", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
             "/admin/users": {"get": {"tags": ["管理后台"], "summary": "用户列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
             "/admin/workers": {"get": {"tags": ["管理后台"], "summary": "员工列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}, "post": {"tags": ["管理后台"], "summary": "新增员工", "security": [{"BearerAuth": []}], "responses": {"201": {"description": "成功"}}}},
             "/admin/orders": {"get": {"tags": ["管理后台"], "summary": "订单列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/health": {"get": {"tags": ["系统"], "summary": "健康检查", "responses": {"200": {"description": "正常"},"503": {"description": "异常"}}}},
+            "/health": {"get": {"tags": ["系统"], "summary": "健康检查", "responses": {"200": {"description": "正常"}, "503": {"description": "异常"}}}},
         }
     }
     return jsonify(spec), 200
