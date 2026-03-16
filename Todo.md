@@ -12,6 +12,7 @@
 | 阶段二：核心业务 | ✅ 已完成 | 数字员工目录 + 租赁流程 |
 | 阶段三：管理后台 | ✅ 已完成 | 权限模型 + 数据看板 + CRUD 管理 |
 | 阶段四：支付与订单生命周期 | ✅ 已完成 | 状态机 + 模拟支付 + 退款 + 超时取消 |
+| 阶段五：增值功能 | ✅ 已完成 | 评价 + 站内消息 + 收藏 + 智能推荐 |
 | 阶段三：管理后台 | ⬜ 待开始 | 运营管理 + 数据看板 |
 | 阶段四：支付与订单 | ⬜ 待开始 | 支付集成 + 订单生命周期 |
 | 阶段五：增值功能 | ⬜ 待开始 | 评价 + 消息 + 推荐 |
@@ -217,27 +218,44 @@
 
 ### To-Do List
 
-- [ ] 评价模型（reviews 表：订单ID、评分、评价内容、创建时间）
-- [ ] API — 提交评价（POST /api/orders/:id/review）
-- [ ] API — 查看员工评价（GET /api/workers/:id/reviews）
-- [ ] 前端 — 评价组件（星级评分 + 文字评价）
-- [ ] 消息模型（messages 表：发送者、接收者、内容、已读状态）
-- [ ] API — 站内通知（GET /api/messages，订单状态变更自动通知）
-- [ ] 前端 — 消息中心页（messages.html — 通知列表、已读/未读）
-- [ ] 前端 — 顶栏消息小红点
-- [ ] 推荐算法 — 基于用户历史订单推荐相似员工
-- [ ] API — 推荐员工（GET /api/recommendations）
-- [ ] 前端 — 首页推荐模块（"为你推荐"卡片区）
-- [ ] 用户收藏功能（POST/DELETE /api/favorites/:worker_id）
+- [x] 评价模型（Review 表：order_id/user_id/worker_id/rating/content，唯一约束）
+- [x] API — 提交评价（POST /api/orders/:id/review，自动更新员工平均评分）
+- [x] API — 查看员工评价（GET /api/workers/:id/reviews，分页）
+- [x] 消息模型（Message 表：user_id/title/content/msg_type/is_read）
+- [x] API — 站内消息（GET /api/messages，支持已读/未读筛选）
+- [x] API — 标记已读（POST /api/messages/:id/read）
+- [x] API — 全部已读（POST /api/messages/read-all）
+- [x] API — 未读数（GET /api/messages/unread-count）
+- [x] 订单状态变更自动发送站内消息（支付/完成/退款/取消/超时）
+- [x] 前端 — 消息中心页（messages.html — 未读小圆点、筛选、全部已读）
+- [x] 收藏模型（Favorite 表：user_id/worker_id，唯一约束）
+- [x] API — 收藏/取消收藏/检查状态（POST/DELETE/GET /api/favorites/:worker_id）
+- [x] API — 收藏列表（GET /api/favorites）
+- [x] 推荐算法 — 基于历史订单分类推荐（排除已用+离线，不足补热门）
+- [x] API — 推荐员工（GET /api/recommendations，personalized/popular 策略）
 
 ### 核心交付物
 
-| 交付物 | 说明 |
+| 交付物 | 文件 |
 |--------|------|
-| 评价系统 | 订单完成后可评分 + 评论，影响员工评分 |
-| 站内消息 | 系统通知 + 消息中心 |
-| 智能推荐 | 基于历史行为的员工推荐 |
-| 收藏功能 | 用户可收藏/取消收藏数字员工 |
+| 评价系统（评分+评论+更新平均分） | `backend/app.py` (Review 模型 + 2 API) |
+| 站内消息（自动通知+消息中心） | `backend/app.py` (Message 模型 + 4 API) |
+| 收藏功能（收藏/取消/检查/列表） | `backend/app.py` (Favorite 模型 + 4 API) |
+| 智能推荐（个性化+热门兜底） | `backend/app.py` (recommendations API) |
+| 消息中心页 | `frontend/messages.html` |
+
+### 测试报告
+
+**测试时间**：2026-03-16 | **测试方式**：自动化 API 测试（SQLite 替代 MySQL）| **结果**：✅ 54/54 通过，0 失败
+
+| 测试模块 | 测试项数 | 结果 | 测试内容 |
+|----------|----------|------|----------|
+| 评价系统 | 13 | ✅ | 无效评分→400、正常评价→201、评分/内容/用户名正确、重复评价→400、他人→403、评价列表、不存在→404、评分更新 |
+| 站内消息 | 12 | ✅ | 列表200、自动产生消息、unread_count、标记单条/全部已读、筛选未读、无token→401、隔离性 |
+| 收藏功能 | 11 | ✅ | 收藏201+含worker、幂等200、列表2条、check=true/false、取消200、重复取消404、不存在404、无token401 |
+| 推荐 API | 10 | ✅ | 个性化推荐非空、不含已用W1/W3、不含离线W4、新用户→popular、未登录→popular、limit生效 |
+| 前端页面 | 1 | ✅ | messages.html 存在 |
+| **合计** | **54** | **✅ 全部通过** | |
 
 ---
 

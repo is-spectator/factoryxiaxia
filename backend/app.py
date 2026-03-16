@@ -212,6 +212,75 @@ class Payment(db.Model):
         }
 
 
+class Review(db.Model):
+    __tablename__ = "reviews"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    worker_id = db.Column(db.Integer, db.ForeignKey("workers.id"), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)  # 1-5
+    content = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    user = db.relationship("User", backref="reviews", lazy=True)
+    order = db.relationship("Order", backref="review", lazy=True, uselist=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "order_id": self.order_id,
+            "user_id": self.user_id,
+            "username": self.user.username if self.user else None,
+            "worker_id": self.worker_id,
+            "rating": self.rating,
+            "content": self.content,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Message(db.Model):
+    __tablename__ = "messages"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, default="")
+    msg_type = db.Column(db.String(30), default="system")  # system/order/review
+    related_order_id = db.Column(db.Integer, nullable=True)
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "content": self.content,
+            "msg_type": self.msg_type,
+            "related_order_id": self.related_order_id,
+            "is_read": self.is_read,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Favorite(db.Model):
+    __tablename__ = "favorites"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    worker_id = db.Column(db.Integer, db.ForeignKey("workers.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint("user_id", "worker_id", name="uq_user_worker"),)
+
+    worker = db.relationship("Worker", lazy=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "worker_id": self.worker_id,
+            "worker": self.worker.to_brief_dict() if self.worker else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 # ===== 工具函数 =====
 
 def create_token(user):
@@ -264,6 +333,19 @@ def generate_payment_no():
     now = datetime.datetime.utcnow()
     import random
     return now.strftime("PAY%Y%m%d%H%M%S") + str(random.randint(100000, 999999))
+
+
+def send_message(user_id, title, content="", msg_type="system", related_order_id=None):
+    """创建站内消息"""
+    msg = Message(
+        user_id=user_id,
+        title=title,
+        content=content,
+        msg_type=msg_type,
+        related_order_id=related_order_id,
+    )
+    db.session.add(msg)
+    return msg
 
 
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
@@ -510,6 +592,9 @@ def cancel_order(order_id):
 
     order.status = "cancelled"
     order.cancelled_at = datetime.datetime.utcnow()
+    send_message(user.id, "订单已取消",
+                 f"订单 {order.order_no} 已取消",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({"message": "订单已取消", "order": order.to_dict()}), 200
@@ -556,6 +641,9 @@ def pay_order(order_id):
     order.paid_at = now
 
     db.session.add(payment)
+    send_message(user.id, "支付成功",
+                 f"订单 {order.order_no} 支付成功，金额 ￥{float(order.total_amount):.2f}",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({
@@ -603,6 +691,9 @@ def complete_order(order_id):
 
     order.status = "completed"
     order.completed_at = datetime.datetime.utcnow()
+    send_message(user.id, "服务已完成",
+                 f"订单 {order.order_no} 已完成，快去评价吧！",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({"message": "服务已完成", "order": order.to_dict()}), 200
@@ -633,6 +724,9 @@ def refund_order(order_id):
         payment.status = "refunded"
         payment.refunded_at = now
 
+    send_message(user.id, "退款成功",
+                 f"订单 {order.order_no} 已退款，金额 ￥{float(order.total_amount):.2f}",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({"message": "退款成功", "order": order.to_dict()}), 200
@@ -658,7 +752,6 @@ def get_order_payments(order_id):
 @app.route("/api/orders/cancel-expired", methods=["POST"])
 def cancel_expired_orders():
     """定时任务：取消超时未支付订单（创建超过30分钟仍为pending）"""
-    # 可被 cron/APScheduler 调用，也可由管理员手动触发
     admin = require_admin()
     if not admin:
         return jsonify({"error": "无管理员权限"}), 403
@@ -673,10 +766,257 @@ def cancel_expired_orders():
     for order in expired:
         order.status = "cancelled"
         order.cancelled_at = datetime.datetime.utcnow()
+        send_message(order.user_id, "订单已超时取消",
+                     f"订单 {order.order_no} 因超时未支付已自动取消",
+                     "order", order.id)
         count += 1
 
     db.session.commit()
     return jsonify({"message": f"已取消 {count} 个超时订单", "cancelled_count": count}), 200
+
+
+# ===== 评价 API =====
+
+@app.route("/api/orders/<int:order_id>/review", methods=["POST"])
+def create_review(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权评价此订单"}), 403
+    if order.status != "completed":
+        return jsonify({"error": "只能评价已完成的订单"}), 400
+
+    existing = Review.query.filter_by(order_id=order.id).first()
+    if existing:
+        return jsonify({"error": "该订单已评价"}), 400
+
+    data = request.get_json(silent=True) or {}
+    rating = data.get("rating")
+    content = (data.get("content") or "").strip()
+
+    if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+        return jsonify({"error": "评分为1-5的整数"}), 400
+
+    review = Review(
+        order_id=order.id,
+        user_id=user.id,
+        worker_id=order.worker_id,
+        rating=rating,
+        content=content,
+    )
+    db.session.add(review)
+
+    # 更新员工平均评分
+    worker = Worker.query.get(order.worker_id)
+    if worker:
+        avg = db.session.query(db.func.avg(Review.rating)).filter_by(worker_id=worker.id).scalar()
+        if avg is not None:
+            worker.rating = round(float(avg), 1)
+
+    db.session.commit()
+
+    return jsonify({"message": "评价成功", "review": review.to_dict()}), 201
+
+
+@app.route("/api/workers/<int:worker_id>/reviews", methods=["GET"])
+def get_worker_reviews(worker_id):
+    worker = Worker.query.get(worker_id)
+    if not worker:
+        return jsonify({"error": "员工不存在"}), 404
+
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+    per_page = min(per_page, 50)
+
+    query = Review.query.filter_by(worker_id=worker_id).order_by(Review.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        "reviews": [r.to_dict() for r in pagination.items],
+        "total": pagination.total,
+        "page": pagination.page,
+        "pages": pagination.pages,
+    }), 200
+
+
+# ===== 站内消息 API =====
+
+@app.route("/api/messages", methods=["GET"])
+def get_messages():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 20, type=int)
+    per_page = min(per_page, 50)
+    is_read = request.args.get("is_read", type=str)
+
+    query = Message.query.filter_by(user_id=user.id)
+    if is_read == "true":
+        query = query.filter_by(is_read=True)
+    elif is_read == "false":
+        query = query.filter_by(is_read=False)
+    query = query.order_by(Message.created_at.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    unread_count = Message.query.filter_by(user_id=user.id, is_read=False).count()
+
+    return jsonify({
+        "messages": [m.to_dict() for m in pagination.items],
+        "total": pagination.total,
+        "unread_count": unread_count,
+        "page": pagination.page,
+        "pages": pagination.pages,
+    }), 200
+
+
+@app.route("/api/messages/<int:msg_id>/read", methods=["POST"])
+def mark_message_read(msg_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    msg = Message.query.get(msg_id)
+    if not msg or msg.user_id != user.id:
+        return jsonify({"error": "消息不存在"}), 404
+
+    msg.is_read = True
+    db.session.commit()
+    return jsonify({"message": "已读"}), 200
+
+
+@app.route("/api/messages/read-all", methods=["POST"])
+def mark_all_read():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    Message.query.filter_by(user_id=user.id, is_read=False).update({"is_read": True})
+    db.session.commit()
+    return jsonify({"message": "全部已读"}), 200
+
+
+@app.route("/api/messages/unread-count", methods=["GET"])
+def unread_count():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    count = Message.query.filter_by(user_id=user.id, is_read=False).count()
+    return jsonify({"unread_count": count}), 200
+
+
+# ===== 收藏 API =====
+
+@app.route("/api/favorites", methods=["GET"])
+def get_favorites():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    favs = Favorite.query.filter_by(user_id=user.id).order_by(Favorite.created_at.desc()).all()
+    return jsonify({"favorites": [f.to_dict() for f in favs]}), 200
+
+
+@app.route("/api/favorites/<int:worker_id>", methods=["POST"])
+def add_favorite(worker_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    worker = Worker.query.get(worker_id)
+    if not worker:
+        return jsonify({"error": "员工不存在"}), 404
+
+    existing = Favorite.query.filter_by(user_id=user.id, worker_id=worker_id).first()
+    if existing:
+        return jsonify({"message": "已收藏", "favorite": existing.to_dict()}), 200
+
+    fav = Favorite(user_id=user.id, worker_id=worker_id)
+    db.session.add(fav)
+    db.session.commit()
+    return jsonify({"message": "收藏成功", "favorite": fav.to_dict()}), 201
+
+
+@app.route("/api/favorites/<int:worker_id>", methods=["DELETE"])
+def remove_favorite(worker_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    fav = Favorite.query.filter_by(user_id=user.id, worker_id=worker_id).first()
+    if not fav:
+        return jsonify({"error": "未收藏"}), 404
+
+    db.session.delete(fav)
+    db.session.commit()
+    return jsonify({"message": "已取消收藏"}), 200
+
+
+@app.route("/api/favorites/<int:worker_id>/check", methods=["GET"])
+def check_favorite(worker_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    exists = Favorite.query.filter_by(user_id=user.id, worker_id=worker_id).first() is not None
+    return jsonify({"is_favorited": exists}), 200
+
+
+# ===== 推荐 API =====
+
+@app.route("/api/recommendations", methods=["GET"])
+def get_recommendations():
+    """基于用户历史订单推荐相似分类员工"""
+    user = get_current_user()
+    limit = request.args.get("limit", 6, type=int)
+    limit = min(limit, 20)
+
+    if user:
+        # 获取用户历史订单涉及的分类
+        ordered_cats = db.session.query(Worker.category_id).join(
+            Order, Order.worker_id == Worker.id
+        ).filter(Order.user_id == user.id).distinct().all()
+        cat_ids = [c[0] for c in ordered_cats]
+
+        # 获取用户已经下过单的员工ID
+        ordered_worker_ids = db.session.query(Order.worker_id).filter(
+            Order.user_id == user.id
+        ).distinct().all()
+        exclude_ids = [w[0] for w in ordered_worker_ids]
+
+        if cat_ids:
+            # 推荐同分类、未使用过的员工
+            query = Worker.query.filter(
+                Worker.category_id.in_(cat_ids),
+                Worker.status != "offline",
+            )
+            if exclude_ids:
+                query = query.filter(~Worker.id.in_(exclude_ids))
+            recs = query.order_by(Worker.rating.desc(), Worker.total_orders.desc()).limit(limit).all()
+
+            # 不足则补充热门员工
+            if len(recs) < limit:
+                existing_ids = [w.id for w in recs] + exclude_ids
+                extra = Worker.query.filter(
+                    Worker.status != "offline",
+                    ~Worker.id.in_(existing_ids) if existing_ids else True,
+                ).order_by(Worker.total_orders.desc()).limit(limit - len(recs)).all()
+                recs.extend(extra)
+
+            return jsonify({"recommendations": [w.to_brief_dict() for w in recs], "strategy": "personalized"}), 200
+
+    # 未登录或无历史 → 热门推荐
+    hot = Worker.query.filter(Worker.status != "offline").order_by(
+        Worker.total_orders.desc(), Worker.rating.desc()
+    ).limit(limit).all()
+    return jsonify({"recommendations": [w.to_brief_dict() for w in hot], "strategy": "popular"}), 200
 
 
 # ===== 管理后台 API =====
