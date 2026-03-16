@@ -120,6 +120,22 @@ CREATE TABLE IF NOT EXISTS favorites (
     FOREIGN KEY (worker_id) REFERENCES workers(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ===== 性能索引 =====
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_worker_id ON orders(worker_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created_at ON orders(created_at);
+CREATE INDEX idx_payments_order_id ON payments(order_id);
+CREATE INDEX idx_payments_user_id ON payments(user_id);
+CREATE INDEX idx_reviews_worker_id ON reviews(worker_id);
+CREATE INDEX idx_reviews_user_id ON reviews(user_id);
+CREATE INDEX idx_messages_user_id ON messages(user_id);
+CREATE INDEX idx_messages_is_read ON messages(is_read);
+CREATE INDEX idx_messages_created_at ON messages(created_at);
+CREATE INDEX idx_favorites_user_id ON favorites(user_id);
+CREATE INDEX idx_workers_category_id ON workers(category_id);
+CREATE INDEX idx_workers_status ON workers(status);
+
 -- ===== 种子数据：分类 =====
 INSERT INTO categories (name, icon, description, sort_order) VALUES
 ('开发工程', 'mdi:code-braces', '全栈开发、后端架构、移动端、DevOps', 1),

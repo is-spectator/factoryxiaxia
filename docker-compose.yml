@@ -7,9 +7,9 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root_secret_2026
-      MYSQL_DATABASE: xiaxia_factory
-      MYSQL_USER: xiaxia
-      MYSQL_PASSWORD: xiaxia_secret_2026
+      MYSQL_DATABASE: ${DB_NAME:-xiaxia_factory}
+      MYSQL_USER: ${DB_USER:-xiaxia}
+      MYSQL_PASSWORD: ${DB_PASS:-xiaxia_secret_2026}
     volumes:
       - db_data:/var/lib/mysql
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -28,12 +28,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      DB_USER: xiaxia
-      DB_PASS: xiaxia_secret_2026
-      DB_HOST: db
-      DB_NAME: xiaxia_factory
-      JWT_SECRET: xiaxia-jwt-secret-key-2026
+      DB_USER: ${DB_USER:-xiaxia}
+      DB_PASS: ${DB_PASS:-xiaxia_secret_2026}
+      DB_HOST: ${DB_HOST:-db}
+      DB_NAME: ${DB_NAME:-xiaxia_factory}
+      JWT_SECRET: ${JWT_SECRET:-xiaxia-jwt-secret-key-2026}
+      FLASK_ENV: ${FLASK_ENV:-production}
+      RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT:-60/minute}
+      RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10/minute}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
     ports:
       - "5000:5000"
 

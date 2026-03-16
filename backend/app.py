@@ -1,12 +1,38 @@
 import os
 import datetime
 import re
+import logging
+import json
+import traceback
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import bcrypt
 import jwt
+
+# ===== 结构化日志 =====
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[0]:
+            log_entry["exception"] = traceback.format_exception(*record.exc_info)
+        return json.dumps(log_entry, ensure_ascii=False)
+
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
+logger = logging.getLogger("xiaxia")
+
+# ===== Flask 应用 =====
 
 app = Flask(__name__)
 CORS(app)
@@ -16,6 +42,7 @@ DB_PASS = os.environ.get("DB_PASS", "xiaxia_secret_2026")
 DB_HOST = os.environ.get("DB_HOST", "db")
 DB_NAME = os.environ.get("DB_NAME", "xiaxia_factory")
 JWT_SECRET = os.environ.get("JWT_SECRET", "xiaxia-jwt-secret-key-2026")
+ALERT_WEBHOOK_URL = os.environ.get("ALERT_WEBHOOK_URL", "")
 
 app.config["SQLALCHEMY_DATABASE_URI"] = (
     f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}?charset=utf8mb4"
@@ -23,6 +50,62 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+# ===== 限流 =====
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[os.environ.get("RATE_LIMIT_DEFAULT", "60/minute")],
+    storage_uri="memory://",
+)
+
+# ===== 安全响应头 + 请求日志 =====
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # 请求日志
+    duration = ""
+    if hasattr(g, "request_start"):
+        duration = f" {(datetime.datetime.utcnow() - g.request_start).total_seconds()*1000:.0f}ms"
+    logger.info(f"{request.method} {request.path} → {response.status_code}{duration}")
+    return response
+
+@app.before_request
+def before_request_hook():
+    g.request_start = datetime.datetime.utcnow()
+
+# ===== 全局异常处理 + 告警 =====
+
+def send_alert(title, detail=""):
+    """发送异常告警到 Webhook（钉钉/飞书/Slack）"""
+    if not ALERT_WEBHOOK_URL:
+        return
+    try:
+        import urllib.request
+        payload = json.dumps({
+            "msgtype": "text",
+            "text": {"content": f"[虾虾工厂告警] {title}\n{detail}"}
+        }).encode("utf-8")
+        req = urllib.request.Request(ALERT_WEBHOOK_URL, data=payload,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        logger.warning("告警发送失败")
+
+@app.errorhandler(500)
+def handle_500(e):
+    logger.error(f"Internal Server Error: {e}", exc_info=True)
+    send_alert("500 Internal Server Error", f"{request.method} {request.path}\n{e}")
+    return jsonify({"error": "服务器内部错误"}), 500
+
+@app.errorhandler(429)
+def handle_429(e):
+    return jsonify({"error": "请求过于频繁，请稍后再试"}), 429
 
 
 # ===== 数据模型 =====
@@ -354,6 +437,7 @@ EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 # ===== 用户 API =====
 
 @app.route("/api/register", methods=["POST"])
+@limiter.limit(os.environ.get("RATE_LIMIT_AUTH", "10/minute"))
 def register():
     data = request.get_json(silent=True)
     if not data:
@@ -390,6 +474,7 @@ def register():
 
 
 @app.route("/api/login", methods=["POST"])
+@limiter.limit(os.environ.get("RATE_LIMIT_AUTH", "10/minute"))
 def login():
     data = request.get_json(silent=True)
     if not data:
@@ -1326,8 +1411,69 @@ def admin_update_order_status(order_id):
 
 
 @app.route("/api/health", methods=["GET"])
+@limiter.exempt
 def health():
-    return jsonify({"status": "ok"}), 200
+    result = {"status": "ok", "timestamp": datetime.datetime.utcnow().isoformat() + "Z"}
+    # 数据库连通性检查
+    try:
+        db.session.execute(db.text("SELECT 1"))
+        result["database"] = "connected"
+    except Exception as e:
+        result["status"] = "degraded"
+        result["database"] = f"error: {e}"
+    return jsonify(result), 200 if result["status"] == "ok" else 503
+
+
+@app.route("/api/docs", methods=["GET"])
+@limiter.exempt
+def api_docs():
+    """OpenAPI 3.0 规范文档"""
+    spec = {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "虾虾工厂 API",
+            "version": "1.0.0",
+            "description": "数字员工租赁平台 RESTful API",
+        },
+        "servers": [{"url": "/api", "description": "API Server"}],
+        "components": {
+            "securitySchemes": {
+                "BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
+            }
+        },
+        "paths": {
+            "/register": {"post": {"tags": ["用户"], "summary": "用户注册", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["username","email","password","confirm_password"], "properties": {"username": {"type":"string"}, "email": {"type":"string"}, "password": {"type":"string"}, "confirm_password": {"type":"string"}}}}}}, "responses": {"201": {"description": "注册成功"}}}},
+            "/login": {"post": {"tags": ["用户"], "summary": "用户登录", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["login_id","password"], "properties": {"login_id": {"type":"string"}, "password": {"type":"string"}}}}}}, "responses": {"200": {"description": "登录成功"}}}},
+            "/profile": {"get": {"tags": ["用户"], "summary": "获取个人信息", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/categories": {"get": {"tags": ["分类"], "summary": "分类列表", "responses": {"200": {"description": "成功"}}}},
+            "/workers": {"get": {"tags": ["员工"], "summary": "员工列表", "parameters": [{"name":"page","in":"query","schema":{"type":"integer"}}, {"name":"per_page","in":"query","schema":{"type":"integer"}}, {"name":"category_id","in":"query","schema":{"type":"integer"}}, {"name":"status","in":"query","schema":{"type":"string"}}, {"name":"keyword","in":"query","schema":{"type":"string"}}, {"name":"sort_by","in":"query","schema":{"type":"string"}}], "responses": {"200": {"description": "成功"}}}},
+            "/workers/{id}": {"get": {"tags": ["员工"], "summary": "员工详情", "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/workers/{id}/reviews": {"get": {"tags": ["评价"], "summary": "员工评价列表", "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders": {"post": {"tags": ["订单"], "summary": "创建订单", "security": [{"BearerAuth": []}], "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["worker_id","duration_hours"], "properties": {"worker_id": {"type":"integer"}, "duration_hours": {"type":"integer"}, "remark": {"type":"string"}}}}}}, "responses": {"201": {"description": "下单成功"}}}, "get": {"tags": ["订单"], "summary": "我的订单列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}": {"get": {"tags": ["订单"], "summary": "订单详情", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/pay": {"post": {"tags": ["支付"], "summary": "模拟支付", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "支付成功"}}}},
+            "/orders/{id}/activate": {"post": {"tags": ["订单"], "summary": "开始服务", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/complete": {"post": {"tags": ["订单"], "summary": "确认完成", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/refund": {"post": {"tags": ["支付"], "summary": "申请退款", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/cancel": {"post": {"tags": ["订单"], "summary": "取消订单", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/orders/{id}/review": {"post": {"tags": ["评价"], "summary": "提交评价", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "requestBody": {"content": {"application/json": {"schema": {"type":"object","required":["rating"],"properties":{"rating":{"type":"integer","minimum":1,"maximum":5},"content":{"type":"string"}}}}}}, "responses": {"201": {"description": "评价成功"}}}},
+            "/orders/{id}/payments": {"get": {"tags": ["支付"], "summary": "订单支付记录", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/messages": {"get": {"tags": ["消息"], "summary": "消息列表", "security": [{"BearerAuth": []}], "parameters": [{"name":"is_read","in":"query","schema":{"type":"string"}}], "responses": {"200": {"description": "成功"}}}},
+            "/messages/{id}/read": {"post": {"tags": ["消息"], "summary": "标记已读", "security": [{"BearerAuth": []}], "parameters": [{"name":"id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/messages/read-all": {"post": {"tags": ["消息"], "summary": "全部已读", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/messages/unread-count": {"get": {"tags": ["消息"], "summary": "未读数", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/favorites": {"get": {"tags": ["收藏"], "summary": "收藏列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/favorites/{worker_id}": {"post": {"tags": ["收藏"], "summary": "收藏员工", "security": [{"BearerAuth": []}], "parameters": [{"name":"worker_id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"201": {"description": "成功"}}}, "delete": {"tags": ["收藏"], "summary": "取消收藏", "security": [{"BearerAuth": []}], "parameters": [{"name":"worker_id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/favorites/{worker_id}/check": {"get": {"tags": ["收藏"], "summary": "检查收藏状态", "security": [{"BearerAuth": []}], "parameters": [{"name":"worker_id","in":"path","required": True,"schema":{"type":"integer"}}], "responses": {"200": {"description": "成功"}}}},
+            "/recommendations": {"get": {"tags": ["推荐"], "summary": "智能推荐员工", "responses": {"200": {"description": "成功"}}}},
+            "/admin/stats": {"get": {"tags": ["管理后台"], "summary": "数据统计", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/admin/users": {"get": {"tags": ["管理后台"], "summary": "用户列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/admin/workers": {"get": {"tags": ["管理后台"], "summary": "员工列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}, "post": {"tags": ["管理后台"], "summary": "新增员工", "security": [{"BearerAuth": []}], "responses": {"201": {"description": "成功"}}}},
+            "/admin/orders": {"get": {"tags": ["管理后台"], "summary": "订单列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
+            "/health": {"get": {"tags": ["系统"], "summary": "健康检查", "responses": {"200": {"description": "正常"},"503": {"description": "异常"}}}},
+        }
+    }
+    return jsonify(spec), 200
 
 
 with app.app_context():
