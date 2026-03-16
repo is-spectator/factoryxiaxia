@@ -25,6 +25,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 
+# ===== 数据模型 =====
+
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -41,6 +43,123 @@ class User(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
+
+class Category(db.Model):
+    __tablename__ = "categories"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    icon = db.Column(db.String(100), nullable=False, default="mdi:briefcase")
+    description = db.Column(db.String(200), default="")
+    sort_order = db.Column(db.Integer, default=0)
+
+    workers = db.relationship("Worker", backref="category", lazy=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "icon": self.icon,
+            "description": self.description,
+            "worker_count": len(self.workers),
+        }
+
+
+class Worker(db.Model):
+    __tablename__ = "workers"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=False)
+    avatar_icon = db.Column(db.String(100), default="mdi:robot-happy-outline")
+    avatar_gradient_from = db.Column(db.String(30), default="#6A0DAD")
+    avatar_gradient_to = db.Column(db.String(30), default="#00D2FF")
+    level = db.Column(db.Integer, default=5)
+    skills = db.Column(db.Text, default="")  # 逗号分隔
+    description = db.Column(db.Text, default="")
+    hourly_rate = db.Column(db.Numeric(10, 2), nullable=False)
+    billing_unit = db.Column(db.String(20), default="时薪")  # 时薪/月租/按件计费
+    status = db.Column(db.String(20), default="online")  # online/busy/offline
+    rating = db.Column(db.Numeric(2, 1), default=5.0)
+    total_orders = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "category_id": self.category_id,
+            "category_name": self.category.name if self.category else None,
+            "avatar_icon": self.avatar_icon,
+            "avatar_gradient_from": self.avatar_gradient_from,
+            "avatar_gradient_to": self.avatar_gradient_to,
+            "level": self.level,
+            "skills": [s.strip() for s in self.skills.split(",") if s.strip()] if self.skills else [],
+            "description": self.description,
+            "hourly_rate": float(self.hourly_rate),
+            "billing_unit": self.billing_unit,
+            "status": self.status,
+            "rating": float(self.rating) if self.rating else 5.0,
+            "total_orders": self.total_orders,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def to_brief_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "category_id": self.category_id,
+            "category_name": self.category.name if self.category else None,
+            "avatar_icon": self.avatar_icon,
+            "avatar_gradient_from": self.avatar_gradient_from,
+            "avatar_gradient_to": self.avatar_gradient_to,
+            "level": self.level,
+            "skills": [s.strip() for s in self.skills.split(",") if s.strip()] if self.skills else [],
+            "hourly_rate": float(self.hourly_rate),
+            "billing_unit": self.billing_unit,
+            "status": self.status,
+            "rating": float(self.rating) if self.rating else 5.0,
+            "total_orders": self.total_orders,
+        }
+
+
+ORDER_STATUSES = ["pending", "paid", "active", "completed", "cancelled", "refunded"]
+
+
+class Order(db.Model):
+    __tablename__ = "orders"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_no = db.Column(db.String(30), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    worker_id = db.Column(db.Integer, db.ForeignKey("workers.id"), nullable=False)
+    duration_hours = db.Column(db.Integer, nullable=False)
+    total_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    status = db.Column(db.String(20), default="pending")
+    remark = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    user = db.relationship("User", backref="orders", lazy=True)
+    worker = db.relationship("Worker", backref="orders", lazy=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "order_no": self.order_no,
+            "user_id": self.user_id,
+            "worker_id": self.worker_id,
+            "worker_name": self.worker.name if self.worker else None,
+            "worker_icon": self.worker.avatar_icon if self.worker else None,
+            "worker_gradient_from": self.worker.avatar_gradient_from if self.worker else None,
+            "worker_gradient_to": self.worker.avatar_gradient_to if self.worker else None,
+            "duration_hours": self.duration_hours,
+            "total_amount": float(self.total_amount),
+            "status": self.status,
+            "remark": self.remark,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ===== 工具函数 =====
 
 def create_token(user):
     payload = {
@@ -60,8 +179,27 @@ def verify_token(token):
         return None
 
 
+def get_current_user():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:]
+    payload = verify_token(token)
+    if not payload:
+        return None
+    return User.query.get(payload["user_id"])
+
+
+def generate_order_no():
+    now = datetime.datetime.utcnow()
+    import random
+    return now.strftime("XF%Y%m%d%H%M%S") + str(random.randint(1000, 9999))
+
+
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
+
+# ===== 用户 API =====
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -124,20 +262,186 @@ def login():
 
 @app.route("/api/profile", methods=["GET"])
 def profile():
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "未登录，请先登录"}), 401
-
-    token = auth_header[7:]
-    payload = verify_token(token)
-    if not payload:
-        return jsonify({"error": "登录已过期，请重新登录"}), 401
-
-    user = User.query.get(payload["user_id"])
+    user = get_current_user()
     if not user:
-        return jsonify({"error": "用户不存在"}), 404
-
+        return jsonify({"error": "未登录或登录已过期"}), 401
     return jsonify({"user": user.to_dict()}), 200
+
+
+# ===== 分类 API =====
+
+@app.route("/api/categories", methods=["GET"])
+def get_categories():
+    cats = Category.query.order_by(Category.sort_order).all()
+    return jsonify({"categories": [c.to_dict() for c in cats]}), 200
+
+
+# ===== 数字员工 API =====
+
+@app.route("/api/workers", methods=["GET"])
+def get_workers():
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 12, type=int)
+    per_page = min(per_page, 50)
+
+    category_id = request.args.get("category_id", type=int)
+    status = request.args.get("status", type=str)
+    keyword = request.args.get("keyword", "", type=str).strip()
+    sort_by = request.args.get("sort_by", "total_orders", type=str)
+
+    query = Worker.query
+
+    if category_id:
+        query = query.filter(Worker.category_id == category_id)
+    if status:
+        query = query.filter(Worker.status == status)
+    if keyword:
+        like_kw = f"%{keyword}%"
+        query = query.filter(
+            db.or_(
+                Worker.name.like(like_kw),
+                Worker.skills.like(like_kw),
+                Worker.description.like(like_kw),
+            )
+        )
+
+    if sort_by == "price_asc":
+        query = query.order_by(Worker.hourly_rate.asc())
+    elif sort_by == "price_desc":
+        query = query.order_by(Worker.hourly_rate.desc())
+    elif sort_by == "rating":
+        query = query.order_by(Worker.rating.desc())
+    elif sort_by == "level":
+        query = query.order_by(Worker.level.desc())
+    else:
+        query = query.order_by(Worker.total_orders.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        "workers": [w.to_brief_dict() for w in pagination.items],
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages,
+    }), 200
+
+
+@app.route("/api/workers/<int:worker_id>", methods=["GET"])
+def get_worker_detail(worker_id):
+    worker = Worker.query.get(worker_id)
+    if not worker:
+        return jsonify({"error": "数字员工不存在"}), 404
+    return jsonify({"worker": worker.to_dict()}), 200
+
+
+# ===== 订单 API =====
+
+@app.route("/api/orders", methods=["POST"])
+def create_order():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "请提供JSON数据"}), 400
+
+    worker_id = data.get("worker_id")
+    duration_hours = data.get("duration_hours")
+    remark = (data.get("remark") or "").strip()
+
+    if not worker_id or not duration_hours:
+        return jsonify({"error": "请选择员工和租赁时长"}), 400
+
+    duration_hours = int(duration_hours)
+    if duration_hours < 1 or duration_hours > 8760:
+        return jsonify({"error": "租赁时长应在1-8760小时之间"}), 400
+
+    worker = Worker.query.get(worker_id)
+    if not worker:
+        return jsonify({"error": "数字员工不存在"}), 404
+    if worker.status == "offline":
+        return jsonify({"error": "该数字员工当前不可用"}), 400
+
+    total_amount = round(float(worker.hourly_rate) * duration_hours, 2)
+
+    order = Order(
+        order_no=generate_order_no(),
+        user_id=user.id,
+        worker_id=worker.id,
+        duration_hours=duration_hours,
+        total_amount=total_amount,
+        status="pending",
+        remark=remark,
+    )
+    db.session.add(order)
+    worker.total_orders += 1
+    db.session.commit()
+
+    return jsonify({"message": "下单成功", "order": order.to_dict()}), 201
+
+
+@app.route("/api/orders", methods=["GET"])
+def get_my_orders():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+    per_page = min(per_page, 50)
+    status = request.args.get("status", type=str)
+
+    query = Order.query.filter_by(user_id=user.id)
+    if status:
+        query = query.filter_by(status=status)
+    query = query.order_by(Order.created_at.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        "orders": [o.to_dict() for o in pagination.items],
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages,
+    }), 200
+
+
+@app.route("/api/orders/<int:order_id>", methods=["GET"])
+def get_order_detail(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权查看此订单"}), 403
+
+    return jsonify({"order": order.to_dict()}), 200
+
+
+@app.route("/api/orders/<int:order_id>/cancel", methods=["POST"])
+def cancel_order(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权操作此订单"}), 403
+    if order.status not in ("pending",):
+        return jsonify({"error": "当前状态无法取消"}), 400
+
+    order.status = "cancelled"
+    db.session.commit()
+
+    return jsonify({"message": "订单已取消", "order": order.to_dict()}), 200
 
 
 @app.route("/api/health", methods=["GET"])

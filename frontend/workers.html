@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>数字员工市场 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .card-hover:hover { border-color: #6A0DAD; transform: translateY(-5px); transition: all 0.3s ease; }
+        .btn-glow:hover { box-shadow: 0 0 20px rgba(106,13,173,0.6); transform: translateY(-2px); }
+        .cat-active { background: rgba(106,13,173,0.3); border-color: #6A0DAD; color: #fff; }
+        .status-online { color: #22c55e; }
+        .status-busy { color: #f97316; }
+        .status-offline { color: #6b7280; }
+        .status-dot-online { background: #22c55e; }
+        .status-dot-busy { background: #f97316; }
+        .status-dot-offline { background: #6b7280; }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<!-- 顶部导航栏 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+        <a class="text-sm font-medium" href="login.html">登录</a>
+        <a class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2 rounded-full text-sm font-bold btn-glow transition" href="register.html">立即注册</a>
+    </div>
+</nav>
+
+<main class="pt-28 pb-20 px-6 max-w-7xl mx-auto">
+    <!-- 页头 -->
+    <div class="text-center mb-12">
+        <h1 class="text-4xl font-bold mb-4">数字员工<span class="text-gradient">人才市场</span></h1>
+        <p class="text-gray-400 max-w-2xl mx-auto">浏览 150+ 专业数字员工，按需租赁，即时部署。找到最适合您业务的 AI 工作者。</p>
+    </div>
+
+    <!-- 搜索栏 -->
+    <div class="relative max-w-3xl mx-auto mb-10">
+        <span class="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 text-xl">
+            <span class="iconify" data-icon="mdi:magnify"></span>
+        </span>
+        <input id="search-input" class="w-full bg-white/5 border border-white/20 rounded-full py-4 px-16 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition" placeholder="搜索技能、职位名称..." type="text"/>
+        <button onclick="doSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 bg-cyan-500 hover:bg-cyan-400 text-black px-6 py-2 rounded-full font-bold transition">搜索</button>
+    </div>
+
+    <!-- 分类筛选 -->
+    <div class="flex flex-wrap gap-3 mb-6 justify-center" id="category-filters">
+        <button onclick="filterCategory(null)" class="cat-btn cat-active px-4 py-2 rounded-full text-sm border border-white/20 transition hover:border-[#6A0DAD]" data-cat="all">全部</button>
+    </div>
+
+    <!-- 排序 -->
+    <div class="flex justify-between items-center mb-8">
+        <p class="text-sm text-gray-500">共 <span id="total-count">0</span> 位数字员工</p>
+        <select id="sort-select" onchange="loadWorkers()" class="bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-cyan-500">
+            <option value="total_orders">按人气排序</option>
+            <option value="rating">按评分排序</option>
+            <option value="price_asc">价格从低到高</option>
+            <option value="price_desc">价格从高到低</option>
+            <option value="level">按等级排序</option>
+        </select>
+    </div>
+
+    <!-- 员工卡片网格 -->
+    <div id="workers-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-10">
+        <div class="col-span-full text-center py-20 text-gray-500">加载中...</div>
+    </div>
+
+    <!-- 分页 -->
+    <div id="pagination" class="flex justify-center items-center space-x-2"></div>
+</main>
+
+<!-- 页脚 -->
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+
+<script>
+    let currentPage = 1;
+    let currentCategory = null;
+    let currentKeyword = '';
+
+    // 登录状态
+    (function() {
+        const token = localStorage.getItem('xiaxia_token');
+        const userStr = localStorage.getItem('xiaxia_user');
+        if (token && userStr) {
+            const user = JSON.parse(userStr);
+            document.getElementById('nav-auth').innerHTML = `
+                <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
+                    <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>${user.username}
+                </a>
+                <a class="text-sm hover:text-white px-4 py-2 transition" href="orders.html">
+                    <span class="iconify inline mr-1" data-icon="mdi:clipboard-list-outline"></span>我的订单
+                </a>
+                <button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>
+            `;
+        }
+    })();
+
+    function logout() {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.reload();
+    }
+
+    // 加载分类
+    async function loadCategories() {
+        try {
+            const res = await fetch('/api/categories');
+            const data = await res.json();
+            const container = document.getElementById('category-filters');
+            data.categories.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = 'cat-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-[#6A0DAD] hover:text-white';
+                btn.dataset.cat = cat.id;
+                btn.innerHTML = `<span class="iconify inline mr-1" data-icon="${cat.icon}"></span>${cat.name}`;
+                btn.onclick = () => filterCategory(cat.id);
+                container.appendChild(btn);
+            });
+        } catch(e) { console.error(e); }
+    }
+
+    function filterCategory(catId) {
+        currentCategory = catId;
+        currentPage = 1;
+        document.querySelectorAll('.cat-btn').forEach(b => {
+            b.classList.remove('cat-active', 'text-white');
+            b.classList.add('text-gray-400');
+        });
+        const target = catId ? document.querySelector(`.cat-btn[data-cat="${catId}"]`) : document.querySelector('.cat-btn[data-cat="all"]');
+        if (target) {
+            target.classList.add('cat-active', 'text-white');
+            target.classList.remove('text-gray-400');
+        }
+        loadWorkers();
+    }
+
+    function doSearch() {
+        currentKeyword = document.getElementById('search-input').value.trim();
+        currentPage = 1;
+        loadWorkers();
+    }
+
+    document.getElementById('search-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') doSearch();
+    });
+
+    // 加载员工列表
+    async function loadWorkers() {
+        const sortBy = document.getElementById('sort-select').value;
+        let url = `/api/workers?page=${currentPage}&per_page=12&sort_by=${sortBy}`;
+        if (currentCategory) url += `&category_id=${currentCategory}`;
+        if (currentKeyword) url += `&keyword=${encodeURIComponent(currentKeyword)}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            renderWorkers(data.workers);
+            document.getElementById('total-count').textContent = data.total;
+            renderPagination(data.page, data.pages);
+        } catch(e) {
+            document.getElementById('workers-grid').innerHTML = '<div class="col-span-full text-center py-20 text-red-400">加载失败，请刷新重试</div>';
+        }
+    }
+
+    function renderWorkers(workers) {
+        const grid = document.getElementById('workers-grid');
+        if (!workers || workers.length === 0) {
+            grid.innerHTML = '<div class="col-span-full text-center py-20 text-gray-500">暂无数字员工，换个条件试试？</div>';
+            return;
+        }
+        grid.innerHTML = workers.map(w => `
+            <a href="worker-detail.html?id=${w.id}" class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2 block cursor-pointer transition-all">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="relative">
+                        <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
+                            <span class="iconify text-3xl" data-icon="${w.avatar_icon}"></span>
+                        </div>
+                        <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#050714] status-dot-${w.status}"></div>
+                    </div>
+                    <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. ${w.level}</span>
+                </div>
+                <h4 class="text-lg font-bold">${w.name}</h4>
+                <div class="flex items-center text-xs text-gray-400 mt-1 mb-2">
+                    <span class="iconify mr-1" data-icon="mdi:tag-outline"></span>${w.category_name}
+                </div>
+                <div class="flex flex-wrap gap-1 mb-4">
+                    ${w.skills.slice(0, 3).map(s => `<span class="bg-white/5 text-[10px] px-2 py-0.5 rounded text-gray-300">${s}</span>`).join('')}
+                    ${w.skills.length > 3 ? `<span class="text-[10px] text-gray-500">+${w.skills.length - 3}</span>` : ''}
+                </div>
+                <div class="flex items-center mb-3">
+                    ${renderStars(w.rating)}
+                    <span class="text-xs text-gray-500 ml-2">${w.rating}</span>
+                    <span class="text-xs text-gray-600 ml-auto">${w.total_orders} 次雇佣</span>
+                </div>
+                <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                    <div>
+                        <p class="text-xs text-gray-500">${w.billing_unit}</p>
+                        <p class="font-bold text-lg">￥${w.hourly_rate.toFixed(2)}</p>
+                    </div>
+                    <span class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                        <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                    </span>
+                </div>
+            </a>
+        `).join('');
+    }
+
+    function renderStars(rating) {
+        const full = Math.floor(rating);
+        const half = rating - full >= 0.5 ? 1 : 0;
+        const empty = 5 - full - half;
+        let html = '';
+        for (let i = 0; i < full; i++) html += '<span class="iconify text-yellow-400 text-xs" data-icon="mdi:star"></span>';
+        for (let i = 0; i < half; i++) html += '<span class="iconify text-yellow-400 text-xs" data-icon="mdi:star-half-full"></span>';
+        for (let i = 0; i < empty; i++) html += '<span class="iconify text-gray-600 text-xs" data-icon="mdi:star-outline"></span>';
+        return html;
+    }
+
+    function renderPagination(page, pages) {
+        const container = document.getElementById('pagination');
+        if (pages <= 1) { container.innerHTML = ''; return; }
+        let html = '';
+        if (page > 1) html += `<button onclick="goPage(${page-1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>`;
+        for (let i = 1; i <= pages; i++) {
+            if (i === page) {
+                html += `<button class="px-3 py-1 rounded bg-[#6A0DAD] text-white text-sm font-bold">${i}</button>`;
+            } else if (Math.abs(i - page) <= 2 || i === 1 || i === pages) {
+                html += `<button onclick="goPage(${i})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">${i}</button>`;
+            } else if (Math.abs(i - page) === 3) {
+                html += `<span class="text-gray-500">...</span>`;
+            }
+        }
+        if (page < pages) html += `<button onclick="goPage(${page+1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>`;
+        container.innerHTML = html;
+    }
+
+    function goPage(p) { currentPage = p; loadWorkers(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+
+    // 初始化
+    loadCategories();
+    loadWorkers();
+</script>
+</body>
+</html>

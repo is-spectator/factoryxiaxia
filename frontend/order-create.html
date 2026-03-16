@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>确认租赁 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .btn-glow:hover { box-shadow: 0 0 20px rgba(106,13,173,0.6); transform: translateY(-2px); }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<!-- 导航 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+    </div>
+</nav>
+
+<main class="pt-28 pb-20 px-6 max-w-3xl mx-auto">
+    <!-- 步骤条 -->
+    <div class="flex items-center justify-center mb-12 text-sm">
+        <div class="flex items-center">
+            <div class="w-8 h-8 rounded-full bg-[#6A0DAD] flex items-center justify-center font-bold text-xs">1</div>
+            <span class="ml-2 text-white font-medium">选择员工</span>
+        </div>
+        <div class="w-16 h-px bg-[#6A0DAD] mx-4"></div>
+        <div class="flex items-center">
+            <div class="w-8 h-8 rounded-full bg-[#6A0DAD] flex items-center justify-center font-bold text-xs">2</div>
+            <span class="ml-2 text-white font-medium">确认订单</span>
+        </div>
+        <div class="w-16 h-px bg-white/20 mx-4"></div>
+        <div class="flex items-center">
+            <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold text-xs text-gray-500">3</div>
+            <span class="ml-2 text-gray-500">完成</span>
+        </div>
+    </div>
+
+    <div id="order-content">
+        <div class="text-center py-20 text-gray-500">加载中...</div>
+    </div>
+</main>
+
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+
+<script>
+    // 登录检查
+    const token = localStorage.getItem('xiaxia_token');
+    if (!token) { window.location.href = 'login.html'; }
+
+    const params = new URLSearchParams(window.location.search);
+    const workerId = params.get('worker_id');
+    const defaultHours = parseInt(params.get('hours')) || 24;
+
+    let workerData = null;
+
+    async function init() {
+        if (!workerId) {
+            document.getElementById('order-content').innerHTML = '<div class="text-center py-20 text-red-400">缺少参数，请从员工详情页进入</div>';
+            return;
+        }
+        try {
+            const res = await fetch('/api/workers/' + workerId);
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            workerData = data.worker;
+            render();
+        } catch(e) {
+            document.getElementById('order-content').innerHTML = '<div class="text-center py-20 text-red-400">员工信息加载失败</div>';
+        }
+    }
+
+    function render() {
+        const w = workerData;
+        const total = (w.hourly_rate * defaultHours).toFixed(2);
+        document.getElementById('order-content').innerHTML = `
+            <div class="glass-morphism p-8 rounded-3xl mb-6">
+                <h2 class="text-xl font-bold mb-6 flex items-center">
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:robot-happy-outline"></span>租赁员工
+                </h2>
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
+                        <span class="iconify text-3xl" data-icon="${w.avatar_icon}"></span>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg">${w.name}</h3>
+                        <p class="text-sm text-gray-400">${w.category_name} · Lv.${w.level}</p>
+                    </div>
+                    <div class="ml-auto text-right">
+                        <p class="text-xs text-gray-500">${w.billing_unit}</p>
+                        <p class="text-xl font-bold">￥${w.hourly_rate.toFixed(2)}</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    ${w.skills.map(s => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${s}</span>`).join('')}
+                </div>
+            </div>
+
+            <div class="glass-morphism p-8 rounded-3xl mb-6">
+                <h2 class="text-xl font-bold mb-6 flex items-center">
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:timer-outline"></span>租赁配置
+                </h2>
+                <div class="mb-6">
+                    <label class="text-sm text-gray-400 mb-2 block">租赁时长（小时）</label>
+                    <input id="order-hours" type="number" min="1" max="8760" value="${defaultHours}" oninput="recalc()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition text-lg"/>
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="setH(24)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1天</button>
+                        <button onclick="setH(72)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">3天</button>
+                        <button onclick="setH(168)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1周</button>
+                        <button onclick="setH(720)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1月</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-2 block">备注（选填）</label>
+                    <textarea id="order-remark" rows="3" placeholder="描述您的需求，以便数字员工更好地为您服务..." class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition resize-none"></textarea>
+                </div>
+            </div>
+
+            <!-- 费用汇总 -->
+            <div class="glass-morphism p-8 rounded-3xl mb-8">
+                <h2 class="text-xl font-bold mb-6 flex items-center">
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:receipt-text-outline"></span>费用明细
+                </h2>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">员工单价</span>
+                        <span>￥${w.hourly_rate.toFixed(2)} / 小时</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">租赁时长</span>
+                        <span id="sum-hours">${defaultHours} 小时</span>
+                    </div>
+                    <div class="border-t border-white/10 my-2"></div>
+                    <div class="flex justify-between text-xl font-bold">
+                        <span>应付总额</span>
+                        <span class="text-gradient" id="sum-total">￥${total}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-4">
+                <a href="worker-detail.html?id=${w.id}" class="flex-1 border border-white/20 py-4 rounded-xl font-bold text-center hover:bg-white/5 transition">返回修改</a>
+                <button onclick="submitOrder()" id="submit-btn" class="flex-1 bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold btn-glow transition flex items-center justify-center">
+                    <span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单
+                </button>
+            </div>
+            <p class="text-[10px] text-gray-600 text-center mt-4">下单后订单状态为"待支付"，支持随时取消</p>
+        `;
+    }
+
+    function setH(h) { document.getElementById('order-hours').value = h; recalc(); }
+
+    function recalc() {
+        if (!workerData) return;
+        const hours = parseInt(document.getElementById('order-hours').value) || 1;
+        const total = (workerData.hourly_rate * hours).toFixed(2);
+        document.getElementById('sum-hours').textContent = hours + ' 小时';
+        document.getElementById('sum-total').textContent = '￥' + total;
+    }
+
+    async function submitOrder() {
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="iconify mr-2 animate-spin" data-icon="mdi:loading"></span>提交中...';
+
+        const hours = parseInt(document.getElementById('order-hours').value) || 24;
+        const remark = document.getElementById('order-remark').value.trim();
+
+        try {
+            const res = await fetch('/api/orders', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token,
+                },
+                body: JSON.stringify({ worker_id: parseInt(workerId), duration_hours: hours, remark: remark }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.error || '下单失败');
+                btn.disabled = false;
+                btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单';
+                return;
+            }
+            // 成功 - 跳转到订单列表
+            window.location.href = 'orders.html?new_order=' + data.order.order_no;
+        } catch(e) {
+            alert('网络错误，请重试');
+            btn.disabled = false;
+            btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单';
+        }
+    }
+
+    init();
+</script>
+</body>
+</html>

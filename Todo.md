@@ -9,7 +9,7 @@
 | 阶段 | 状态 | 说明 |
 |------|------|------|
 | 阶段一：基础骨架 | ✅ 已完成 | 官网 + 用户系统 + Docker 部署 |
-| 阶段二：核心业务 | ⬜ 待开始 | 数字员工目录 + 租赁流程 |
+| 阶段二：核心业务 | ✅ 已完成 | 数字员工目录 + 租赁流程 |
 | 阶段三：管理后台 | ⬜ 待开始 | 运营管理 + 数据看板 |
 | 阶段四：支付与订单 | ⬜ 待开始 | 支付集成 + 订单生命周期 |
 | 阶段五：增值功能 | ⬜ 待开始 | 评价 + 消息 + 推荐 |
@@ -53,21 +53,21 @@
 
 ### To-Do List
 
-- [ ] 设计数字员工数据模型（workers 表：名称、技能标签、头像、时薪、状态、简介）
-- [ ] 数字员工分类模型（categories 表：开发、设计、运营、客服等）
-- [ ] API — 数字员工列表（GET /api/workers，支持分页、筛选、搜索）
-- [ ] API — 数字员工详情（GET /api/workers/:id）
-- [ ] API — 数字员工分类（GET /api/categories）
-- [ ] 前端 — 数字员工目录页（workers.html — 卡片列表、筛选栏、搜索框）
-- [ ] 前端 — 数字员工详情页（worker-detail.html — 技能、评分、租赁入口）
-- [ ] 设计租赁订单模型（orders 表：用户ID、员工ID、租赁时长、状态、金额）
-- [ ] API — 创建租赁订单（POST /api/orders）
-- [ ] API — 查看我的订单（GET /api/orders）
-- [ ] API — 订单详情（GET /api/orders/:id）
-- [ ] 前端 — 租赁下单页（order-create.html — 选择时长、确认价格）
-- [ ] 前端 — 我的订单页（orders.html — 订单列表、状态标签）
-- [ ] 数据库迁移脚本更新（init.sql 加入 workers、categories、orders 表）
-- [ ] 种子数据 — 预置 10+ 数字员工示例数据
+- [x] 设计数字员工数据模型（workers 表：名称、技能标签、头像、时薪、状态、简介）
+- [x] 数字员工分类模型（categories 表：开发、设计、运营、客服等）
+- [x] API — 数字员工列表（GET /api/workers，支持分页、筛选、搜索）
+- [x] API — 数字员工详情（GET /api/workers/:id）
+- [x] API — 数字员工分类（GET /api/categories）
+- [x] 前端 — 数字员工目录页（workers.html — 卡片列表、筛选栏、搜索框）
+- [x] 前端 — 数字员工详情页（worker-detail.html — 技能、评分、租赁入口）
+- [x] 设计租赁订单模型（orders 表：用户ID、员工ID、租赁时长、状态、金额）
+- [x] API — 创建租赁订单（POST /api/orders）
+- [x] API — 查看我的订单（GET /api/orders）
+- [x] API — 订单详情（GET /api/orders/:id）
+- [x] 前端 — 租赁下单页（order-create.html — 选择时长、确认价格）
+- [x] 前端 — 我的订单页（orders.html — 订单列表、状态标签）
+- [x] 数据库迁移脚本更新（init.sql 加入 workers、categories、orders 表）
+- [x] 种子数据 — 预置 10+ 数字员工示例数据
 
 ### 核心交付物
 
