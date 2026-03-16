@@ -29,7 +29,8 @@ jobs:
           JWT_SECRET: "ci-test-secret"
         run: |
           cd backend
-          python -m pytest tests/ -v --tb=short 2>/dev/null || echo "Tests completed"
+          python -m pytest tests/ -v --tb=short 2>/dev/null
+          echo "Tests completed"
 
   docker-build:
     runs-on: ubuntu-latest
