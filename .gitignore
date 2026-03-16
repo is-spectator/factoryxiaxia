@@ -208,3 +208,5 @@ dist
 # Python
 __pycache__/
 *.pyc
+*.db
+backend/instance/
