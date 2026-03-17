@@ -138,6 +138,7 @@ function selectMethod(el) {
 
 async function loadOrder() {
     const res = await fetch(`/api/orders/${orderId}`, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
     if (!res.ok) { alert('订单不存在或无权访问'); window.location.href = 'orders.html'; return; }
     const d = await res.json();
     order = d.order;
@@ -173,6 +174,7 @@ async function doPay() {
             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({ method: selectedMethod }),
         });
+        if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
         const d = await res.json();
         if (!res.ok) {
             alert(d.error || '支付失败');
@@ -184,6 +186,15 @@ async function doPay() {
 
         document.getElementById('link-detail').href = `order-detail.html?order_id=${orderId}`;
         document.getElementById('success-modal').classList.remove('hidden');
+        // 5秒后自动跳转到订单详情
+        let countdown = 5;
+        const countdownEl = document.getElementById('success-msg');
+        countdownEl.textContent = `支付成功！${countdown}秒后自动跳转到订单详情...`;
+        const timer = setInterval(() => {
+            countdown--;
+            if (countdown <= 0) { clearInterval(timer); window.location.href = `order-detail.html?order_id=${orderId}`; }
+            else { countdownEl.textContent = `支付成功！${countdown}秒后自动跳转到订单详情...`; }
+        }, 1000);
     } catch(e) {
         alert('网络错误，请重试');
         btn.disabled = false;
