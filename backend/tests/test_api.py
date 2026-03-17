@@ -433,3 +433,184 @@ class TestSecurity:
         assert r.status_code == 200
         data = json.loads(r.data)
         assert data["strategy"] == "popular"
+
+
+# ==================== High-risk Regression ====================
+
+class TestDisabledUserLogin:
+    """禁用用户无法登录"""
+
+    def test_disabled_user_cannot_login(self, client, app_module, db):
+        register(client)
+        u = app_module.User.query.filter_by(username="testuser").first()
+        u.is_active = False
+        db.session.commit()
+        r = client.post("/api/login", json={"login_id": "testuser", "password": "Test1234"})
+        assert r.status_code == 403
+        assert "禁用" in json.loads(r.data)["error"]
+
+    def test_disabled_user_token_rejected_on_order(self, client, app_module, db):
+        """禁用用户的已有 token 无法创建订单"""
+        register(client)
+        token = login(client)
+        _, w = seed_worker(app_module, db)
+        u = app_module.User.query.filter_by(username="testuser").first()
+        u.is_active = False
+        db.session.commit()
+        r = client.post("/api/orders", headers=auth(token),
+                        json={"worker_id": w.id, "duration_hours": 1})
+        assert r.status_code == 401
+
+
+class TestAdminOrderStateMachine:
+    """管理员不能绕过状态机随意修改订单状态"""
+
+    def _setup(self, client, app_module, db):
+        make_admin(app_module, db)
+        admin_token = login(client, "admin1")
+        register(client, "buyer", "buyer@t.com")
+        buyer_token = login(client, "buyer")
+        _, w = seed_worker(app_module, db)
+        cr = client.post("/api/orders", headers=auth(buyer_token),
+                         json={"worker_id": w.id, "duration_hours": 5})
+        oid = json.loads(cr.data)["order"]["id"]
+        return admin_token, buyer_token, oid
+
+    def test_cannot_skip_pending_to_active(self, client, app_module, db):
+        admin_token, _, oid = self._setup(client, app_module, db)
+        r = client.put(f"/api/admin/orders/{oid}/status", headers=auth(admin_token),
+                       json={"status": "active"})
+        assert r.status_code == 400
+        assert "状态流转不允许" in json.loads(r.data)["error"]
+
+    def test_cannot_skip_pending_to_completed(self, client, app_module, db):
+        admin_token, _, oid = self._setup(client, app_module, db)
+        r = client.put(f"/api/admin/orders/{oid}/status", headers=auth(admin_token),
+                       json={"status": "completed"})
+        assert r.status_code == 400
+
+    def test_cannot_go_back_from_cancelled(self, client, app_module, db):
+        admin_token, buyer_token, oid = self._setup(client, app_module, db)
+        client.post(f"/api/orders/{oid}/cancel", headers=auth(buyer_token))
+        r = client.put(f"/api/admin/orders/{oid}/status", headers=auth(admin_token),
+                       json={"status": "pending"})
+        assert r.status_code == 400
+
+    def test_valid_transition_works(self, client, app_module, db):
+        admin_token, _, oid = self._setup(client, app_module, db)
+        r = client.put(f"/api/admin/orders/{oid}/status", headers=auth(admin_token),
+                       json={"status": "paid"})
+        assert r.status_code == 200
+        assert json.loads(r.data)["order"]["status"] == "paid"
+
+    def test_admin_status_change_sets_timestamp(self, client, app_module, db):
+        admin_token, _, oid = self._setup(client, app_module, db)
+        client.put(f"/api/admin/orders/{oid}/status", headers=auth(admin_token),
+                   json={"status": "paid"})
+        r = client.put(f"/api/admin/orders/{oid}/status", headers=auth(admin_token),
+                       json={"status": "active"})
+        data = json.loads(r.data)
+        assert data["order"]["activated_at"] is not None
+
+
+class TestMessageTriggers:
+    """核心动作均应生成站内消息"""
+
+    def _setup(self, client, app_module, db):
+        register(client)
+        token = login(client)
+        _, w = seed_worker(app_module, db)
+        return token, w
+
+    def _msg_count(self, client, token):
+        r = client.get("/api/messages", headers=auth(token))
+        return json.loads(r.data)["total"]
+
+    def test_cancel_generates_message(self, client, app_module, db):
+        token, w = self._setup(client, app_module, db)
+        cr = client.post("/api/orders", headers=auth(token),
+                         json={"worker_id": w.id, "duration_hours": 1})
+        oid = json.loads(cr.data)["order"]["id"]
+        before = self._msg_count(client, token)
+        client.post(f"/api/orders/{oid}/cancel", headers=auth(token))
+        assert self._msg_count(client, token) > before
+
+    def test_pay_generates_message(self, client, app_module, db):
+        token, w = self._setup(client, app_module, db)
+        cr = client.post("/api/orders", headers=auth(token),
+                         json={"worker_id": w.id, "duration_hours": 1})
+        oid = json.loads(cr.data)["order"]["id"]
+        before = self._msg_count(client, token)
+        client.post(f"/api/orders/{oid}/pay", headers=auth(token))
+        assert self._msg_count(client, token) > before
+
+    def test_activate_generates_message(self, client, app_module, db):
+        token, w = self._setup(client, app_module, db)
+        cr = client.post("/api/orders", headers=auth(token),
+                         json={"worker_id": w.id, "duration_hours": 1})
+        oid = json.loads(cr.data)["order"]["id"]
+        client.post(f"/api/orders/{oid}/pay", headers=auth(token))
+        before = self._msg_count(client, token)
+        client.post(f"/api/orders/{oid}/activate", headers=auth(token))
+        assert self._msg_count(client, token) > before
+
+    def test_complete_generates_message(self, client, app_module, db):
+        token, w = self._setup(client, app_module, db)
+        cr = client.post("/api/orders", headers=auth(token),
+                         json={"worker_id": w.id, "duration_hours": 1})
+        oid = json.loads(cr.data)["order"]["id"]
+        client.post(f"/api/orders/{oid}/pay", headers=auth(token))
+        client.post(f"/api/orders/{oid}/activate", headers=auth(token))
+        before = self._msg_count(client, token)
+        client.post(f"/api/orders/{oid}/complete", headers=auth(token))
+        assert self._msg_count(client, token) > before
+
+    def test_refund_generates_message(self, client, app_module, db):
+        token, w = self._setup(client, app_module, db)
+        cr = client.post("/api/orders", headers=auth(token),
+                         json={"worker_id": w.id, "duration_hours": 1})
+        oid = json.loads(cr.data)["order"]["id"]
+        client.post(f"/api/orders/{oid}/pay", headers=auth(token))
+        before = self._msg_count(client, token)
+        client.post(f"/api/orders/{oid}/refund", headers=auth(token))
+        assert self._msg_count(client, token) > before
+
+    def test_review_generates_message(self, client, app_module, db):
+        token, w = self._setup(client, app_module, db)
+        cr = client.post("/api/orders", headers=auth(token),
+                         json={"worker_id": w.id, "duration_hours": 1})
+        oid = json.loads(cr.data)["order"]["id"]
+        client.post(f"/api/orders/{oid}/pay", headers=auth(token))
+        client.post(f"/api/orders/{oid}/activate", headers=auth(token))
+        client.post(f"/api/orders/{oid}/complete", headers=auth(token))
+        before = self._msg_count(client, token)
+        client.post(f"/api/orders/{oid}/review", headers=auth(token),
+                    json={"rating": 5, "content": "Nice"})
+        assert self._msg_count(client, token) > before
+
+    def test_admin_status_change_generates_message(self, client, app_module, db):
+        make_admin(app_module, db)
+        admin_token = login(client, "admin1")
+        register(client, "buyer2", "buyer2@t.com")
+        buyer_token = login(client, "buyer2")
+        _, w = seed_worker(app_module, db)
+        cr = client.post("/api/orders", headers=auth(buyer_token),
+                         json={"worker_id": w.id, "duration_hours": 1})
+        oid = json.loads(cr.data)["order"]["id"]
+        before = self._msg_count(client, buyer_token)
+        client.put(f"/api/admin/orders/{oid}/status", headers=auth(admin_token),
+                   json={"status": "paid"})
+        assert self._msg_count(client, buyer_token) > before
+
+
+class TestRecommendationsAuth:
+    """已登录用户获得个性化推荐"""
+
+    def test_personalized_after_order(self, client, app_module, db):
+        register(client)
+        token = login(client)
+        _, w = seed_worker(app_module, db)
+        client.post("/api/orders", headers=auth(token),
+                    json={"worker_id": w.id, "duration_hours": 1})
+        r = client.get("/api/recommendations", headers=auth(token))
+        assert r.status_code == 200

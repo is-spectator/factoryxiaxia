@@ -61,4 +61,4 @@ jobs:
         run: pip install flake8
 
       - name: Lint backend
-        run: flake8 backend/app.py --max-line-length=120 --ignore=E501,W503,E402
+        run: flake8 backend/app.py backend/models.py backend/extensions.py backend/utils/ backend/services/ backend/routes/ --max-line-length=120 --ignore=E501,W503,E402
