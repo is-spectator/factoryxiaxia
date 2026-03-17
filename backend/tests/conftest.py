@@ -13,6 +13,7 @@ os.environ["RATE_LIMIT_AUTH"] = "9999/minute"
 import flask_sqlalchemy
 
 _orig_init = flask_sqlalchemy.SQLAlchemy.__init__
+_orig_init_app = flask_sqlalchemy.SQLAlchemy.init_app
 
 
 def _patched_init(self, app=None, **kwargs):
@@ -21,7 +22,13 @@ def _patched_init(self, app=None, **kwargs):
     _orig_init(self, app=app, **kwargs)
 
 
+def _patched_init_app(self, app, **kwargs):
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite://"
+    return _orig_init_app(self, app, **kwargs)
+
+
 flask_sqlalchemy.SQLAlchemy.__init__ = _patched_init
+flask_sqlalchemy.SQLAlchemy.init_app = _patched_init_app
 
 import app as flask_app  # noqa: E402
 
