@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run tests
+        env:
+          DB_USER: "x"
+          DB_PASS: "x"
+          DB_HOST: "x"
+          DB_NAME: "x"
+          JWT_SECRET: "ci-test-secret"
+          RATE_LIMIT_DEFAULT: "9999/minute"
+          RATE_LIMIT_AUTH: "9999/minute"
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t xiaxia-backend ./backend
+
+      - name: Build frontend image
+        run: docker build -t xiaxia-frontend ./frontend
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Lint backend
+        run: flake8 backend/app.py --max-line-length=120 --ignore=E501,W503,E402

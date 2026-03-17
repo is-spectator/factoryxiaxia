@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>员工详情 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .btn-glow:hover { box-shadow: 0 0 20px rgba(106,13,173,0.6); transform: translateY(-2px); }
+        .card-profile { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<!-- 导航 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+        <a class="text-sm font-medium" href="login.html">登录</a>
+        <a class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2 rounded-full text-sm font-bold btn-glow transition" href="register.html">立即注册</a>
+    </div>
+</nav>
+
+<main class="pt-28 pb-20 px-6 max-w-6xl mx-auto" id="main-content">
+    <div class="text-center py-20 text-gray-500">加载中...</div>
+</main>
+
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+
+<script>
+    // 登录状态
+    (function() {
+        const token = localStorage.getItem('xiaxia_token');
+        const userStr = localStorage.getItem('xiaxia_user');
+        if (token && userStr) {
+            const user = JSON.parse(userStr);
+            document.getElementById('nav-auth').innerHTML = `
+                <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
+                    <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>${user.username}
+                </a>
+                <button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>
+            `;
+        }
+    })();
+    function logout() { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.reload(); }
+
+    const params = new URLSearchParams(window.location.search);
+    const workerId = params.get('id');
+
+    async function loadWorker() {
+        if (!workerId) {
+            document.getElementById('main-content').innerHTML = '<div class="text-center py-20 text-red-400">缺少员工ID参数</div>';
+            return;
+        }
+        try {
+            const res = await fetch(`/api/workers/${workerId}`);
+            if (!res.ok) throw new Error('not found');
+            const data = await res.json();
+            renderDetail(data.worker);
+        } catch(e) {
+            document.getElementById('main-content').innerHTML = '<div class="text-center py-20 text-red-400">数字员工不存在</div>';
+        }
+    }
+
+    function renderStars(rating) {
+        const full = Math.floor(rating);
+        const half = rating - full >= 0.5 ? 1 : 0;
+        const empty = 5 - full - half;
+        let html = '';
+        for (let i = 0; i < full; i++) html += '<span class="iconify text-yellow-400" data-icon="mdi:star"></span>';
+        for (let i = 0; i < half; i++) html += '<span class="iconify text-yellow-400" data-icon="mdi:star-half-full"></span>';
+        for (let i = 0; i < empty; i++) html += '<span class="iconify text-gray-600" data-icon="mdi:star-outline"></span>';
+        return html;
+    }
+
+    const statusMap = { online: { text: '在线', color: 'text-green-400', bg: 'bg-green-500' }, busy: { text: '忙碌', color: 'text-orange-400', bg: 'bg-orange-500' }, offline: { text: '离线', color: 'text-gray-500', bg: 'bg-gray-500' }};
+
+    function renderDetail(w) {
+        const s = statusMap[w.status] || statusMap.online;
+        document.title = `${w.name} | 虾虾工厂`;
+        document.getElementById('main-content').innerHTML = `
+            <!-- 返回按钮 -->
+            <a href="workers.html" class="inline-flex items-center text-sm text-gray-400 hover:text-white mb-8 transition">
+                <span class="iconify mr-1" data-icon="mdi:arrow-left"></span>返回市场
+            </a>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                <!-- 左侧：员工信息 -->
+                <div class="lg:col-span-2 space-y-8">
+                    <!-- 头部卡片 -->
+                    <div class="glass-morphism p-8 rounded-3xl">
+                        <div class="flex flex-col sm:flex-row items-start gap-6">
+                            <div class="relative">
+                                <div class="w-24 h-24 rounded-3xl flex items-center justify-center" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
+                                    <span class="iconify text-5xl" data-icon="${w.avatar_icon}"></span>
+                                </div>
+                                <div class="absolute -bottom-1 -right-1 w-5 h-5 ${s.bg} rounded-full border-2 border-[#050714]"></div>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <h1 class="text-3xl font-bold">${w.name}</h1>
+                                    <span class="bg-white/10 text-xs px-3 py-1 rounded-md uppercase tracking-widest">Lv. ${w.level}</span>
+                                    <span class="${s.color} text-sm font-medium flex items-center"><span class="w-2 h-2 ${s.bg} rounded-full mr-1"></span>${s.text}</span>
+                                </div>
+                                <div class="flex items-center gap-4 text-sm text-gray-400 mb-4">
+                                    <span><span class="iconify inline mr-1" data-icon="mdi:tag-outline"></span>${w.category_name}</span>
+                                    <span><span class="iconify inline mr-1" data-icon="mdi:shopping-outline"></span>${w.total_orders} 次雇佣</span>
+                                    <span class="flex items-center">${renderStars(w.rating)}<span class="ml-1">${w.rating}</span></span>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    ${w.skills.map(s => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${s}</span>`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 详细介绍 -->
+                    <div class="glass-morphism p-8 rounded-3xl">
+                        <h3 class="text-lg font-bold mb-4 flex items-center">
+                            <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:text-box-outline"></span>详细介绍
+                        </h3>
+                        <p class="text-gray-300 leading-relaxed">${w.description}</p>
+                    </div>
+
+                    <!-- 能力指标 -->
+                    <div class="glass-morphism p-8 rounded-3xl">
+                        <h3 class="text-lg font-bold mb-6 flex items-center">
+                            <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:chart-radar"></span>能力指标
+                        </h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <div class="text-center">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-blue-500/10 flex items-center justify-center mb-2">
+                                    <span class="iconify text-2xl text-blue-400" data-icon="mdi:lightning-bolt"></span>
+                                </div>
+                                <p class="text-sm font-bold">响应速度</p>
+                                <p class="text-xs text-gray-500">< 2 秒</p>
+                            </div>
+                            <div class="text-center">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-purple-500/10 flex items-center justify-center mb-2">
+                                    <span class="iconify text-2xl text-purple-400" data-icon="mdi:brain"></span>
+                                </div>
+                                <p class="text-sm font-bold">专业度</p>
+                                <p class="text-xs text-gray-500">Lv. ${w.level} / 10</p>
+                            </div>
+                            <div class="text-center">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-green-500/10 flex items-center justify-center mb-2">
+                                    <span class="iconify text-2xl text-green-400" data-icon="mdi:clock-check-outline"></span>
+                                </div>
+                                <p class="text-sm font-bold">可用性</p>
+                                <p class="text-xs text-gray-500">7 × 24 小时</p>
+                            </div>
+                            <div class="text-center">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-orange-500/10 flex items-center justify-center mb-2">
+                                    <span class="iconify text-2xl text-orange-400" data-icon="mdi:thumb-up-outline"></span>
+                                </div>
+                                <p class="text-sm font-bold">满意度</p>
+                                <p class="text-xs text-gray-500">${(w.rating / 5 * 100).toFixed(0)}%</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：租赁面板 -->
+                <div class="space-y-6">
+                    <div class="glass-morphism p-8 rounded-3xl sticky top-28">
+                        <h3 class="text-lg font-bold mb-6">租赁方案</h3>
+                        <div class="mb-6">
+                            <p class="text-xs text-gray-500 mb-1">${w.billing_unit}</p>
+                            <p class="text-4xl font-bold text-gradient">￥${w.hourly_rate.toFixed(2)}</p>
+                        </div>
+
+                        <!-- 快捷时长 -->
+                        <div class="mb-6">
+                            <p class="text-sm text-gray-400 mb-3">选择租赁时长</p>
+                            <div class="grid grid-cols-2 gap-2" id="duration-btns">
+                                <button onclick="setDuration(event,24)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 天</button>
+                                <button onclick="setDuration(event,72)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">3 天</button>
+                                <button onclick="setDuration(event,168)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 周</button>
+                                <button onclick="setDuration(event,720)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 月</button>
+                            </div>
+                        </div>
+
+                        <!-- 自定义时长 -->
+                        <div class="mb-6">
+                            <label class="text-sm text-gray-400 mb-2 block">自定义时长（小时）</label>
+                            <input id="custom-hours" type="number" min="1" max="8760" value="24" oninput="updatePrice()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition"/>
+                        </div>
+
+                        <!-- 预计费用 -->
+                        <div class="bg-white/5 rounded-xl p-4 mb-6">
+                            <div class="flex justify-between text-sm mb-2">
+                                <span class="text-gray-400">单价</span>
+                                <span>￥${w.hourly_rate.toFixed(2)} / 小时</span>
+                            </div>
+                            <div class="flex justify-between text-sm mb-2">
+                                <span class="text-gray-400">时长</span>
+                                <span id="display-hours">24 小时</span>
+                            </div>
+                            <div class="border-t border-white/10 my-3"></div>
+                            <div class="flex justify-between font-bold text-lg">
+                                <span>合计</span>
+                                <span class="text-gradient" id="display-total">￥${(w.hourly_rate * 24).toFixed(2)}</span>
+                            </div>
+                        </div>
+
+                        <button onclick="goRent()" class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition flex items-center justify-center">
+                            <span class="iconify mr-2" data-icon="mdi:cart-plus"></span>立即租赁
+                        </button>
+                        <p class="text-[10px] text-gray-600 text-center mt-3">支持随时取消未开始的订单</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    let workerData = null;
+
+    async function init() {
+        if (!workerId) return;
+        try {
+            const res = await fetch('/api/workers/' + workerId);
+            const data = await res.json();
+            workerData = data.worker;
+            renderDetail(workerData);
+        } catch(e) {
+            document.getElementById('main-content').innerHTML = '<div class="text-center py-20 text-red-400">数字员工不存在</div>';
+        }
+    }
+
+    function setDuration(e, hours) {
+        document.getElementById('custom-hours').value = hours;
+        document.querySelectorAll('.dur-btn').forEach(b => { b.classList.remove('border-[#6A0DAD]', 'bg-[#6A0DAD]/10'); b.classList.add('border-white/10'); });
+        e.target.classList.add('border-[#6A0DAD]', 'bg-[#6A0DAD]/10');
+        e.target.classList.remove('border-white/10');
+        updatePrice();
+    }
+
+    function updatePrice() {
+        if (!workerData) return;
+        const hours = parseInt(document.getElementById('custom-hours').value) || 1;
+        const total = (workerData.hourly_rate * hours).toFixed(2);
+        document.getElementById('display-hours').textContent = hours + ' 小时';
+        document.getElementById('display-total').textContent = '￥' + total;
+    }
+
+    function goRent() {
+        const token = localStorage.getItem('xiaxia_token');
+        if (!token) { window.location.href = 'login.html'; return; }
+        const hours = parseInt(document.getElementById('custom-hours').value) || 24;
+        window.location.href = `order-create.html?worker_id=${workerId}&hours=${hours}`;
+    }
+
+    init();
+</script>
+</body>
+</html>

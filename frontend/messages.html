@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>消息中心 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; }
+        .msg-unread { border-left: 3px solid #6A0DAD; background: rgba(106,13,173,0.05); }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="text-white transition" href="messages.html">消息中心</a>
+        </div>
+    </div>
+</nav>
+
+<main class="pt-24 pb-16 px-4 max-w-3xl mx-auto">
+    <div class="flex items-center justify-between mb-8">
+        <h1 class="text-2xl font-bold">消息中心</h1>
+        <div class="flex gap-3 items-center">
+            <span class="text-xs text-gray-500">未读 <span id="unread-badge" class="bg-red-500 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">0</span></span>
+            <button onclick="markAllRead()" class="text-xs text-cyan-400 hover:text-cyan-300 transition">全部已读</button>
+            <select id="filter" onchange="loadMessages()" class="bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-xs focus:outline-none">
+                <option value="">全部</option>
+                <option value="false">未读</option>
+                <option value="true">已读</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="msg-list" class="space-y-3"></div>
+    <div id="pagination" class="flex justify-center mt-6 space-x-2"></div>
+    <div id="empty" class="hidden text-center py-20">
+        <span class="iconify text-5xl text-gray-700 mx-auto mb-4" data-icon="mdi:bell-off-outline"></span>
+        <p class="text-gray-600">暂无消息</p>
+    </div>
+</main>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+let currentPage = 1;
+
+const iconMap = {
+    order: { icon: 'mdi:clipboard-text-outline', color: 'text-blue-400' },
+    review: { icon: 'mdi:star-outline', color: 'text-yellow-400' },
+    system: { icon: 'mdi:bell-outline', color: 'text-gray-400' },
+};
+
+async function loadMessages() {
+    const filter = document.getElementById('filter').value;
+    let url = `/api/messages?page=${currentPage}&per_page=15`;
+    if (filter) url += `&is_read=${filter}`;
+
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (res.status === 401) { window.location.href = 'login.html'; return; }
+    const d = await res.json();
+
+    document.getElementById('unread-badge').textContent = d.unread_count;
+
+    if (d.messages.length === 0) {
+        document.getElementById('msg-list').innerHTML = '';
+        document.getElementById('empty').classList.remove('hidden');
+        document.getElementById('pagination').innerHTML = '';
+        return;
+    }
+    document.getElementById('empty').classList.add('hidden');
+
+    document.getElementById('msg-list').innerHTML = d.messages.map(m => {
+        const ic = iconMap[m.msg_type] || iconMap.system;
+        return `
+        <div class="card p-4 ${m.is_read ? '' : 'msg-unread'} hover:bg-white/5 transition cursor-pointer" onclick="readMsg(${m.id}, ${m.is_read}, ${m.related_order_id || 'null'})">
+            <div class="flex items-start gap-3">
+                <span class="iconify text-xl mt-0.5 ${ic.color}" data-icon="${ic.icon}"></span>
+                <div class="flex-grow min-w-0">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="font-medium text-sm ${m.is_read ? 'text-gray-400' : ''}">${m.title}</p>
+                        <span class="text-[10px] text-gray-600 flex-shrink-0 ml-2">${formatTime(m.created_at)}</span>
+                    </div>
+                    <p class="text-xs text-gray-500 truncate">${m.content || ''}</p>
+                </div>
+                ${!m.is_read ? '<div class="w-2 h-2 rounded-full bg-[#6A0DAD] flex-shrink-0 mt-2"></div>' : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    renderPagination(d.page, d.pages);
+}
+
+async function readMsg(id, isRead, orderId) {
+    if (!isRead) {
+        await fetch(`/api/messages/${id}/read`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+    }
+    if (orderId) {
+        window.location.href = `order-detail.html?order_id=${orderId}`;
+    } else {
+        loadMessages();
+    }
+}
+
+async function markAllRead() {
+    await fetch('/api/messages/read-all', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+    loadMessages();
+}
+
+function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = (now - d) / 1000;
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff/60) + '分钟前';
+    if (diff < 86400) return Math.floor(diff/3600) + '小时前';
+    return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+}
+
+function renderPagination(page, pages) {
+    const c = document.getElementById('pagination');
+    if (pages <= 1) { c.innerHTML = ''; return; }
+    let h = '';
+    if (page > 1) h += `<button onclick="goPage(${page-1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>`;
+    for (let i = 1; i <= pages; i++) {
+        if (i === page) h += `<button class="px-3 py-1 rounded bg-[#6A0DAD] text-sm font-bold">${i}</button>`;
+        else if (Math.abs(i-page)<=2||i===1||i===pages) h += `<button onclick="goPage(${i})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">${i}</button>`;
+    }
+    if (page < pages) h += `<button onclick="goPage(${page+1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>`;
+    c.innerHTML = h;
+}
+function goPage(p) { currentPage = p; loadMessages(); }
+
+loadMessages();
+</script>
+</body>
+</html>

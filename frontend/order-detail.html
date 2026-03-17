@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>订单详情 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        /* 时间线 */
+        .timeline { position: relative; padding-left: 2rem; }
+        .timeline::before { content: ''; position: absolute; left: 0.6rem; top: 0.5rem; bottom: 0.5rem; width: 2px; background: rgba(255,255,255,0.08); }
+        .timeline-item { position: relative; padding-bottom: 1.5rem; }
+        .timeline-item:last-child { padding-bottom: 0; }
+        .timeline-dot { position: absolute; left: -1.65rem; top: 0.25rem; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); background: #050714; z-index: 1; }
+        .timeline-dot.active { border-color: #6A0DAD; background: #6A0DAD; box-shadow: 0 0 10px rgba(106,13,173,0.5); }
+        .timeline-dot.current { border-color: #00D2FF; background: #00D2FF; box-shadow: 0 0 10px rgba(0,210,255,0.5); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { box-shadow: 0 0 10px rgba(0,210,255,0.3); } 50% { box-shadow: 0 0 20px rgba(0,210,255,0.7); } }
+        .btn-primary { background: linear-gradient(135deg, #6A0DAD, #8A2BE2); }
+        .btn-primary:hover { box-shadow: 0 0 20px rgba(106,13,173,0.5); transform: translateY(-1px); }
+        .btn-danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        .btn-danger:hover { background: rgba(239,68,68,0.2); }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+</nav>
+
+<main class="pt-24 pb-16 px-4 max-w-3xl mx-auto">
+    <div id="loading" class="text-center py-20 text-gray-500">加载中...</div>
+    <div id="content" class="hidden">
+        <!-- 状态横幅 -->
+        <div id="status-banner" class="card p-6 mb-6 flex items-center gap-4">
+            <span id="status-icon" class="iconify text-4xl"></span>
+            <div>
+                <p id="status-label" class="text-lg font-bold"></p>
+                <p id="status-desc" class="text-xs text-gray-500"></p>
+            </div>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-6">
+            <!-- 左列：订单信息 -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="card p-6">
+                    <h3 class="font-bold mb-4 text-sm text-gray-400">订单信息</h3>
+                    <div class="flex items-center gap-4 mb-5">
+                        <div id="worker-avatar" class="w-12 h-12 rounded-xl flex items-center justify-center">
+                            <span id="worker-icon" class="iconify text-xl"></span>
+                        </div>
+                        <div>
+                            <p class="font-bold" id="worker-name"></p>
+                            <p class="text-[10px] text-gray-500" id="order-no"></p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-y-3 text-sm">
+                        <div><span class="text-gray-500">租赁时长</span></div><div id="duration" class="text-right"></div>
+                        <div><span class="text-gray-500">单价</span></div><div id="unit-price" class="text-right"></div>
+                        <div><span class="text-gray-500">总金额</span></div><div id="total-amount" class="text-right font-bold text-gradient"></div>
+                        <div><span class="text-gray-500">备注</span></div><div id="remark" class="text-right text-gray-400 truncate"></div>
+                        <div><span class="text-gray-500">创建时间</span></div><div id="created-at" class="text-right text-gray-400"></div>
+                    </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div id="actions" class="flex gap-3"></div>
+            </div>
+
+            <!-- 右列：状态时间线 -->
+            <div class="card p-6">
+                <h3 class="font-bold mb-5 text-sm text-gray-400">订单进度</h3>
+                <div class="timeline" id="timeline"></div>
+            </div>
+        </div>
+
+        <!-- 支付记录 -->
+        <div id="payments-section" class="card p-6 mt-6 hidden">
+            <h3 class="font-bold mb-4 text-sm text-gray-400">支付记录</h3>
+            <div id="payments-list" class="space-y-3"></div>
+        </div>
+    </div>
+</main>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+const params = new URLSearchParams(window.location.search);
+const orderId = params.get('order_id');
+if (!orderId) { window.location.href = 'orders.html'; }
+
+const statusMap = {
+    pending:   { icon: 'mdi:clock-outline', color: 'text-yellow-400', label: '待支付', desc: '请在30分钟内完成支付，逾期将自动取消' },
+    paid:      { icon: 'mdi:check-circle-outline', color: 'text-blue-400', label: '已支付', desc: '支付成功，等待服务开始' },
+    active:    { icon: 'mdi:play-circle-outline', color: 'text-green-400', label: '服务中', desc: '数字员工正在为您工作' },
+    completed: { icon: 'mdi:flag-checkered', color: 'text-gray-400', label: '已完成', desc: '服务已完成，感谢使用' },
+    cancelled: { icon: 'mdi:close-circle-outline', color: 'text-red-400', label: '已取消', desc: '订单已取消' },
+    refunded:  { icon: 'mdi:cash-refund', color: 'text-orange-400', label: '已退款', desc: '退款已处理' },
+};
+
+const timelineSteps = [
+    { key: 'created', label: '创建订单', icon: 'mdi:cart-outline' },
+    { key: 'paid', label: '支付成功', icon: 'mdi:credit-card-check-outline' },
+    { key: 'active', label: '开始服务', icon: 'mdi:play-circle-outline' },
+    { key: 'completed', label: '服务完成', icon: 'mdi:flag-checkered' },
+];
+
+const statusIndex = { pending: 0, paid: 1, active: 2, completed: 3 };
+
+async function loadOrder() {
+    const res = await fetch(`/api/orders/${orderId}`, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { alert('订单不存在'); window.location.href = 'orders.html'; return; }
+    const d = await res.json();
+    const o = d.order;
+
+    // 状态横幅
+    const sc = statusMap[o.status] || statusMap.pending;
+    document.getElementById('status-icon').className = `iconify text-4xl ${sc.color}`;
+    document.getElementById('status-icon').dataset.icon = sc.icon;
+    document.getElementById('status-label').textContent = sc.label;
+    document.getElementById('status-desc').textContent = sc.desc;
+
+    // 订单信息
+    document.getElementById('worker-avatar').style.background = `linear-gradient(135deg, ${o.worker_gradient_from||'#6A0DAD'}, ${o.worker_gradient_to||'#00D2FF'})`;
+    document.getElementById('worker-icon').dataset.icon = o.worker_icon || 'mdi:robot-happy-outline';
+    document.getElementById('worker-name').textContent = o.worker_name;
+    document.getElementById('order-no').textContent = o.order_no;
+    document.getElementById('duration').textContent = o.duration_hours + ' 小时';
+    document.getElementById('unit-price').textContent = '￥' + (o.total_amount / o.duration_hours).toFixed(2) + '/h';
+    document.getElementById('total-amount').textContent = '￥' + o.total_amount.toFixed(2);
+    document.getElementById('remark').textContent = o.remark || '无';
+    document.getElementById('created-at').textContent = formatTime(o.created_at);
+
+    // 时间线
+    renderTimeline(o);
+
+    // 操作按钮
+    renderActions(o);
+
+    // 支付记录
+    await loadPayments();
+
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+}
+
+function renderTimeline(o) {
+    const container = document.getElementById('timeline');
+    const isCancelled = o.status === 'cancelled';
+    const isRefunded = o.status === 'refunded';
+    const currentIdx = statusIndex[o.status] ?? -1;
+
+    const timestamps = {
+        created: o.created_at,
+        paid: o.paid_at,
+        active: null,
+        completed: o.completed_at,
+    };
+
+    let steps = [...timelineSteps];
+    if (isCancelled) {
+        steps = [timelineSteps[0], { key: 'cancelled', label: '已取消', icon: 'mdi:close-circle-outline' }];
+    } else if (isRefunded) {
+        steps = [timelineSteps[0], { key: 'paid', label: '支付成功', icon: 'mdi:credit-card-check-outline' }, { key: 'refunded', label: '已退款', icon: 'mdi:cash-refund' }];
+    }
+
+    container.innerHTML = steps.map((step, i) => {
+        let dotClass = '';
+        let time = '';
+
+        if (isCancelled) {
+            dotClass = i === steps.length - 1 ? 'current' : 'active';
+            if (step.key === 'cancelled') time = formatTime(o.cancelled_at);
+            else if (step.key === 'created') time = formatTime(o.created_at);
+        } else if (isRefunded) {
+            dotClass = i === steps.length - 1 ? 'current' : 'active';
+            if (step.key === 'refunded') time = formatTime(o.refunded_at);
+            else if (step.key === 'paid') time = formatTime(o.paid_at);
+            else if (step.key === 'created') time = formatTime(o.created_at);
+        } else {
+            if (i < currentIdx) dotClass = 'active';
+            else if (i === currentIdx) dotClass = 'current';
+            time = timestamps[step.key] ? formatTime(timestamps[step.key]) : '';
+        }
+
+        return `
+            <div class="timeline-item">
+                <div class="timeline-dot ${dotClass}"></div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="iconify text-sm ${dotClass ? 'text-white' : 'text-gray-600'}" data-icon="${step.icon}"></span>
+                    <span class="text-sm ${dotClass ? 'font-medium' : 'text-gray-600'}">${step.label}</span>
+                </div>
+                ${time ? `<p class="text-[10px] text-gray-600">${time}</p>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function renderActions(o) {
+    const container = document.getElementById('actions');
+    let html = '';
+
+    if (o.status === 'pending') {
+        html += `<a href="pay.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">立即支付</a>`;
+        html += `<button onclick="doAction('cancel')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">取消订单</button>`;
+    } else if (o.status === 'paid') {
+        html += `<button onclick="doAction('activate')" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1">开始服务</button>`;
+        html += `<button onclick="doAction('refund')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">申请退款</button>`;
+    } else if (o.status === 'active') {
+        html += `<button onclick="doAction('complete')" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1">确认完成</button>`;
+        html += `<button onclick="doAction('refund')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">申请退款</button>`;
+    }
+
+    if (html) {
+        container.innerHTML = html;
+        container.classList.remove('hidden');
+    }
+}
+
+async function doAction(action) {
+    const confirmMsg = { cancel: '确定取消订单？', refund: '确定申请退款？', activate: '确定开始服务？', complete: '确定服务已完成？' };
+    if (!confirm(confirmMsg[action] || '确定操作？')) return;
+
+    const res = await fetch(`/api/orders/${orderId}/${action}`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    });
+    const d = await res.json();
+    if (!res.ok) { alert(d.error || '操作失败'); return; }
+    loadOrder();
+}
+
+async function loadPayments() {
+    const res = await fetch(`/api/orders/${orderId}/payments`, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.payments || d.payments.length === 0) return;
+
+    const section = document.getElementById('payments-section');
+    section.classList.remove('hidden');
+    document.getElementById('payments-list').innerHTML = d.payments.map(p => `
+        <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+            <div class="flex items-center gap-3">
+                <span class="iconify text-lg ${p.status === 'refunded' ? 'text-orange-400' : 'text-green-400'}" data-icon="${p.status === 'refunded' ? 'mdi:cash-refund' : 'mdi:credit-card-check-outline'}"></span>
+                <div>
+                    <p class="text-xs font-mono text-gray-400">${p.payment_no}</p>
+                    <p class="text-[10px] text-gray-600">${formatTime(p.paid_at)} · ${p.method}</p>
+                </div>
+            </div>
+            <div class="text-right">
+                <p class="font-bold text-sm ${p.status === 'refunded' ? 'text-orange-400' : ''}">
+                    ${p.status === 'refunded' ? '-' : ''}￥${p.amount.toFixed(2)}
+                </p>
+                <p class="text-[10px] ${p.status === 'refunded' ? 'text-orange-400' : 'text-green-400'}">${p.status === 'refunded' ? '已退款' : '支付成功'}</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+loadOrder();
+</script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>订单管理 | 虾虾工厂管理后台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-4">
+        <a class="flex items-center space-x-2" href="index.html"><span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span><span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span></a>
+        <span class="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-bold">ADMIN</span>
+    </div>
+    <div class="flex items-center space-x-4">
+        <a href="index.html" class="text-xs text-gray-400 hover:text-white transition">返回前台</a>
+        <button onclick="logout()" class="text-xs text-red-400 hover:text-red-300 transition">退出</button>
+    </div>
+</nav>
+<div class="flex pt-16 min-h-screen">
+    <aside class="w-56 border-r border-white/5 bg-black/20 hidden lg:block fixed top-16 bottom-0 overflow-y-auto">
+        <nav class="p-4 space-y-1">
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 ml-3">总览</p>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin.html"><span class="iconify" data-icon="mdi:view-dashboard-outline"></span><span>数据看板</span></a>
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mt-6 mb-3 ml-3">管理</p>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-users.html"><span class="iconify" data-icon="mdi:account-group-outline"></span><span>用户管理</span></a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-workers.html"><span class="iconify" data-icon="mdi:robot-outline"></span><span>员工管理</span></a>
+            <a class="sidebar-active flex items-center space-x-3 px-4 py-2.5 rounded-lg transition text-sm" href="admin-orders.html"><span class="iconify" data-icon="mdi:clipboard-list-outline"></span><span>订单管理</span></a>
+        </nav>
+    </aside>
+    <main class="flex-grow lg:ml-56 p-6 lg:p-8">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex items-center justify-between mb-8">
+                <h1 class="text-2xl font-bold">订单管理</h1>
+                <div class="flex gap-3">
+                    <input id="kw" type="text" placeholder="搜索订单号..." class="bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-cyan-500 w-52"/>
+                    <select id="status-filter" onchange="loadOrders()" class="bg-white/5 border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                        <option value="">全部状态</option>
+                        <option value="pending">待支付</option>
+                        <option value="paid">已支付</option>
+                        <option value="active">服务中</option>
+                        <option value="completed">已完成</option>
+                        <option value="cancelled">已取消</option>
+                        <option value="refunded">已退款</option>
+                    </select>
+                    <button onclick="loadOrders()" class="bg-white/5 border border-white/10 px-4 py-2 rounded-lg text-sm transition hover:bg-white/10">搜索</button>
+                </div>
+            </div>
+            <div class="card overflow-hidden overflow-x-auto">
+                <table class="w-full text-sm text-left min-w-[800px]">
+                    <thead class="bg-white/5 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">订单号</th><th class="px-4 py-3">用户</th><th class="px-4 py-3">数字员工</th><th class="px-4 py-3">时长</th><th class="px-4 py-3">金额</th><th class="px-4 py-3">状态</th><th class="px-4 py-3">创建时间</th><th class="px-4 py-3">操作</th></tr>
+                    </thead>
+                    <tbody id="order-tbody" class="divide-y divide-white/5"></tbody>
+                </table>
+            </div>
+            <div id="pagination" class="flex justify-center mt-6 space-x-2"></div>
+        </div>
+    </main>
+</div>
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+function logout() { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; }
+
+let currentPage = 1;
+const statusConf = {
+    pending:   { label: '待支付', cls: 'bg-yellow-500/20 text-yellow-400' },
+    paid:      { label: '已支付', cls: 'bg-blue-500/20 text-blue-400' },
+    active:    { label: '服务中', cls: 'bg-green-500/20 text-green-400' },
+    completed: { label: '已完成', cls: 'bg-gray-500/20 text-gray-400' },
+    cancelled: { label: '已取消', cls: 'bg-red-500/20 text-red-400' },
+    refunded:  { label: '已退款', cls: 'bg-orange-500/20 text-orange-400' },
+};
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') loadOrders(); });
+
+async function loadOrders() {
+    const kw = document.getElementById('kw').value.trim();
+    const status = document.getElementById('status-filter').value;
+    let url = `/api/admin/orders?page=${currentPage}&per_page=15`;
+    if (kw) url += `&keyword=${encodeURIComponent(kw)}`;
+    if (status) url += `&status=${status}`;
+
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token }});
+    if (res.status === 403) { alert('无管理员权限'); return; }
+    const d = await res.json();
+
+    document.getElementById('order-tbody').innerHTML = d.orders.map(o => {
+        const sc = statusConf[o.status] || statusConf.pending;
+        return `
+        <tr class="hover:bg-white/5">
+            <td class="px-4 py-3 font-mono text-xs">${esc(o.order_no)}</td>
+            <td class="px-4 py-3">${esc(o.username || '-')}</td>
+            <td class="px-4 py-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 rounded flex items-center justify-center" style="background:linear-gradient(135deg,${o.worker_gradient_from||'#6A0DAD'},${o.worker_gradient_to||'#00D2FF'})">
+                        <span class="iconify text-xs" data-icon="${o.worker_icon||'mdi:robot-happy-outline'}"></span>
+                    </div>
+                    <span class="text-xs">${esc(o.worker_name || '-')}</span>
+                </div>
+            </td>
+            <td class="px-4 py-3">${o.duration_hours}h</td>
+            <td class="px-4 py-3 font-medium">￥${o.total_amount.toFixed(2)}</td>
+            <td class="px-4 py-3"><span class="text-[10px] px-2 py-0.5 rounded-full ${sc.cls}">${sc.label}</span></td>
+            <td class="px-4 py-3 text-xs text-gray-500">${o.created_at ? o.created_at.split('T')[0] : '-'}</td>
+            <td class="px-4 py-3">
+                <select onchange="changeStatus(${o.id}, this.value)" class="bg-white/5 border border-white/10 rounded text-xs px-2 py-1">
+                    ${Object.entries(statusConf).map(([k,v]) => `<option value="${k}" ${o.status===k?'selected':''}>${v.label}</option>`).join('')}
+                </select>
+            </td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="8" class="text-center py-10 text-gray-500">暂无订单</td></tr>';
+
+    renderPagination(d.page, d.pages);
+}
+
+async function changeStatus(orderId, newStatus) {
+    const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+    });
+    if (!res.ok) { const d = await res.json(); alert(d.error || '更新失败'); }
+    loadOrders();
+}
+
+function renderPagination(page, pages) {
+    const c = document.getElementById('pagination');
+    if (pages <= 1) { c.innerHTML = ''; return; }
+    let h = '';
+    if (page > 1) h += `<button onclick="goPage(${page-1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>`;
+    for (let i = 1; i <= pages; i++) {
+        if (i === page) h += `<button class="px-3 py-1 rounded bg-[#6A0DAD] text-sm font-bold">${i}</button>`;
+        else if (Math.abs(i-page)<=2||i===1||i===pages) h += `<button onclick="goPage(${i})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">${i}</button>`;
+        else if (Math.abs(i-page)===3) h += '<span class="text-gray-500">...</span>';
+    }
+    if (page < pages) h += `<button onclick="goPage(${page+1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>`;
+    c.innerHTML = h;
+}
+function goPage(p) { currentPage = p; loadOrders(); }
+
+loadOrders();
+</script>
+</body>
+</html>

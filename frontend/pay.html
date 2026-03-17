@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>支付确认 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .pay-method { cursor: pointer; transition: all 0.2s; }
+        .pay-method.selected { border-color: #6A0DAD; background: rgba(106,13,173,0.1); }
+        .pay-method:hover { border-color: rgba(106,13,173,0.5); }
+        .btn-pay { background: linear-gradient(135deg, #6A0DAD, #00D2FF); }
+        .btn-pay:hover { box-shadow: 0 0 30px rgba(106,13,173,0.6); transform: translateY(-2px); }
+        .btn-pay:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        @keyframes pulse-glow { 0%,100% { box-shadow: 0 0 20px rgba(106,13,173,0.3); } 50% { box-shadow: 0 0 40px rgba(106,13,173,0.6); } }
+        .paying { animation: pulse-glow 1.5s infinite; }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+</nav>
+
+<main class="pt-24 pb-16 px-4 max-w-2xl mx-auto">
+    <div id="loading" class="text-center py-20 text-gray-500">加载中...</div>
+    <div id="content" class="hidden">
+        <!-- 订单摘要 -->
+        <div class="card p-8 mb-6">
+            <h1 class="text-xl font-bold mb-6">支付确认</h1>
+            <div class="flex items-center gap-4 mb-6">
+                <div id="worker-avatar" class="w-14 h-14 rounded-2xl flex items-center justify-center">
+                    <span id="worker-icon" class="iconify text-2xl"></span>
+                </div>
+                <div>
+                    <p class="font-bold" id="worker-name"></p>
+                    <p class="text-xs text-gray-500" id="order-no"></p>
+                </div>
+            </div>
+            <div class="space-y-3 text-sm border-t border-white/5 pt-4">
+                <div class="flex justify-between"><span class="text-gray-500">租赁时长</span><span id="duration"></span></div>
+                <div class="flex justify-between"><span class="text-gray-500">单价</span><span id="unit-price"></span></div>
+                <div class="flex justify-between"><span class="text-gray-500">备注</span><span id="remark" class="text-gray-400 max-w-[200px] truncate"></span></div>
+                <div class="flex justify-between border-t border-white/5 pt-3 mt-3">
+                    <span class="font-bold">应付金额</span>
+                    <span class="text-2xl font-bold text-gradient" id="total-amount"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 支付方式 -->
+        <div class="card p-8 mb-6">
+            <h2 class="text-sm font-bold mb-4 text-gray-400">选择支付方式</h2>
+            <div class="space-y-3">
+                <div class="pay-method selected border border-white/10 rounded-xl p-4 flex items-center gap-4" data-method="mock" onclick="selectMethod(this)">
+                    <span class="iconify text-2xl text-cyan-400" data-icon="mdi:test-tube"></span>
+                    <div class="flex-grow">
+                        <p class="font-medium text-sm">模拟支付</p>
+                        <p class="text-[10px] text-gray-500">开发环境 - 立即到账</p>
+                    </div>
+                    <span class="iconify text-lg text-[#6A0DAD] check-icon" data-icon="mdi:check-circle"></span>
+                </div>
+                <div class="pay-method border border-white/10 rounded-xl p-4 flex items-center gap-4 opacity-50" data-method="alipay" onclick="selectMethod(this)">
+                    <span class="iconify text-2xl text-blue-500" data-icon="mdi:alpha-a-circle"></span>
+                    <div class="flex-grow">
+                        <p class="font-medium text-sm">支付宝</p>
+                        <p class="text-[10px] text-gray-500">即将上线</p>
+                    </div>
+                    <span class="iconify text-lg text-[#6A0DAD] check-icon hidden" data-icon="mdi:check-circle"></span>
+                </div>
+                <div class="pay-method border border-white/10 rounded-xl p-4 flex items-center gap-4 opacity-50" data-method="wechat" onclick="selectMethod(this)">
+                    <span class="iconify text-2xl text-green-500" data-icon="mdi:wechat"></span>
+                    <div class="flex-grow">
+                        <p class="font-medium text-sm">微信支付</p>
+                        <p class="text-[10px] text-gray-500">即将上线</p>
+                    </div>
+                    <span class="iconify text-lg text-[#6A0DAD] check-icon hidden" data-icon="mdi:check-circle"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 支付按钮 -->
+        <button id="pay-btn" onclick="doPay()" class="btn-pay w-full py-4 rounded-2xl font-bold text-lg transition-all duration-300">
+            确认支付
+        </button>
+        <p class="text-center text-[10px] text-gray-600 mt-3">点击支付即表示同意《虾虾工厂服务协议》</p>
+
+        <!-- 支付成功弹窗 -->
+        <div id="success-modal" class="hidden fixed inset-0 z-[100] bg-black/70 flex items-center justify-center">
+            <div class="card p-10 text-center max-w-sm">
+                <span class="iconify text-6xl text-green-400 mx-auto mb-4" data-icon="mdi:check-circle-outline"></span>
+                <h2 class="text-xl font-bold mb-2">支付成功</h2>
+                <p class="text-sm text-gray-400 mb-6" id="success-msg">订单已支付，服务即将开始</p>
+                <div class="flex gap-3">
+                    <a id="link-detail" href="#" class="flex-1 border border-white/20 py-2.5 rounded-xl text-sm hover:bg-white/5 transition text-center">查看订单</a>
+                    <a href="orders.html" class="flex-1 btn-pay py-2.5 rounded-xl text-sm text-center">我的订单</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+const params = new URLSearchParams(window.location.search);
+const orderId = params.get('order_id');
+if (!orderId) { alert('缺少订单ID'); window.location.href = 'orders.html'; }
+
+let selectedMethod = 'mock';
+let order = null;
+
+function selectMethod(el) {
+    document.querySelectorAll('.pay-method').forEach(m => {
+        m.classList.remove('selected');
+        m.querySelector('.check-icon').classList.add('hidden');
+    });
+    el.classList.add('selected');
+    el.querySelector('.check-icon').classList.remove('hidden');
+    selectedMethod = el.dataset.method;
+}
+
+async function loadOrder() {
+    const res = await fetch(`/api/orders/${orderId}`, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { alert('订单不存在或无权访问'); window.location.href = 'orders.html'; return; }
+    const d = await res.json();
+    order = d.order;
+
+    if (order.status !== 'pending') {
+        alert('该订单不是待支付状态');
+        window.location.href = 'orders.html';
+        return;
+    }
+
+    document.getElementById('worker-avatar').style.background = `linear-gradient(135deg, ${order.worker_gradient_from || '#6A0DAD'}, ${order.worker_gradient_to || '#00D2FF'})`;
+    document.getElementById('worker-icon').dataset.icon = order.worker_icon || 'mdi:robot-happy-outline';
+    document.getElementById('worker-name').textContent = order.worker_name;
+    document.getElementById('order-no').textContent = order.order_no;
+    document.getElementById('duration').textContent = order.duration_hours + ' 小时';
+    document.getElementById('unit-price').textContent = '￥' + (order.total_amount / order.duration_hours).toFixed(2) + '/h';
+    document.getElementById('remark').textContent = order.remark || '无';
+    document.getElementById('total-amount').textContent = '￥' + order.total_amount.toFixed(2);
+
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+}
+
+async function doPay() {
+    const btn = document.getElementById('pay-btn');
+    btn.disabled = true;
+    btn.textContent = '支付处理中...';
+    btn.classList.add('paying');
+
+    try {
+        const res = await fetch(`/api/orders/${orderId}/pay`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ method: selectedMethod }),
+        });
+        const d = await res.json();
+        if (!res.ok) {
+            alert(d.error || '支付失败');
+            btn.disabled = false;
+            btn.textContent = '确认支付';
+            btn.classList.remove('paying');
+            return;
+        }
+
+        document.getElementById('link-detail').href = `order-detail.html?order_id=${orderId}`;
+        document.getElementById('success-modal').classList.remove('hidden');
+    } catch(e) {
+        alert('网络错误，请重试');
+        btn.disabled = false;
+        btn.textContent = '确认支付';
+        btn.classList.remove('paying');
+    }
+}
+
+loadOrder();
+</script>
+</body>
+</html>

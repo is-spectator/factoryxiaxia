@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>用户管理 | 虾虾工厂管理后台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-4">
+        <a class="flex items-center space-x-2" href="index.html"><span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span><span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span></a>
+        <span class="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-bold">ADMIN</span>
+    </div>
+    <div class="flex items-center space-x-4">
+        <a href="index.html" class="text-xs text-gray-400 hover:text-white transition">返回前台</a>
+        <button onclick="logout()" class="text-xs text-red-400 hover:text-red-300 transition">退出</button>
+    </div>
+</nav>
+<div class="flex pt-16 min-h-screen">
+    <aside class="w-56 border-r border-white/5 bg-black/20 hidden lg:block fixed top-16 bottom-0 overflow-y-auto">
+        <nav class="p-4 space-y-1">
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 ml-3">总览</p>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin.html"><span class="iconify" data-icon="mdi:view-dashboard-outline"></span><span>数据看板</span></a>
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mt-6 mb-3 ml-3">管理</p>
+            <a class="sidebar-active flex items-center space-x-3 px-4 py-2.5 rounded-lg transition text-sm" href="admin-users.html"><span class="iconify" data-icon="mdi:account-group-outline"></span><span>用户管理</span></a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-workers.html"><span class="iconify" data-icon="mdi:robot-outline"></span><span>员工管理</span></a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-orders.html"><span class="iconify" data-icon="mdi:clipboard-list-outline"></span><span>订单管理</span></a>
+        </nav>
+    </aside>
+    <main class="flex-grow lg:ml-56 p-6 lg:p-8">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex items-center justify-between mb-8">
+                <h1 class="text-2xl font-bold">用户管理</h1>
+                <div class="flex gap-3">
+                    <input id="kw" type="text" placeholder="搜索用户名/邮箱..." class="bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-cyan-500 w-64"/>
+                    <select id="role-filter" onchange="loadUsers()" class="bg-white/5 border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                        <option value="">全部角色</option>
+                        <option value="user">普通用户</option>
+                        <option value="operator">运营</option>
+                        <option value="admin">管理员</option>
+                    </select>
+                    <button onclick="loadUsers()" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-4 py-2 rounded-lg text-sm font-bold transition">搜索</button>
+                </div>
+            </div>
+            <div class="card overflow-hidden">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-white/5 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">ID</th><th class="px-4 py-3">用户名</th><th class="px-4 py-3">邮箱</th><th class="px-4 py-3">角色</th><th class="px-4 py-3">状态</th><th class="px-4 py-3">注册时间</th><th class="px-4 py-3">操作</th></tr>
+                    </thead>
+                    <tbody id="user-tbody" class="divide-y divide-white/5"></tbody>
+                </table>
+            </div>
+            <div id="pagination" class="flex justify-center mt-6 space-x-2"></div>
+        </div>
+    </main>
+</div>
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+function logout() { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; }
+
+let currentPage = 1;
+const roleLabels = { user: '普通用户', operator: '运营', admin: '管理员' };
+const roleBadge = { user: 'bg-gray-500/20 text-gray-400', operator: 'bg-blue-500/20 text-blue-400', admin: 'bg-red-500/20 text-red-400' };
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') loadUsers(); });
+
+async function loadUsers() {
+    const kw = document.getElementById('kw').value.trim();
+    const role = document.getElementById('role-filter').value;
+    let url = `/api/admin/users?page=${currentPage}&per_page=15`;
+    if (kw) url += `&keyword=${encodeURIComponent(kw)}`;
+    if (role) url += `&role=${role}`;
+
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token }});
+    if (res.status === 403) { alert('无管理员权限'); return; }
+    const d = await res.json();
+
+    document.getElementById('user-tbody').innerHTML = d.users.map(u => `
+        <tr class="hover:bg-white/5">
+            <td class="px-4 py-3 text-gray-500">${u.id}</td>
+            <td class="px-4 py-3 font-medium">${esc(u.username)}</td>
+            <td class="px-4 py-3 text-gray-400">${esc(u.email)}</td>
+            <td class="px-4 py-3"><span class="text-[10px] px-2 py-0.5 rounded-full ${roleBadge[u.role] || roleBadge.user}">${esc(roleLabels[u.role] || u.role)}</span></td>
+            <td class="px-4 py-3">${u.is_active ? '<span class="text-green-400 text-xs">正常</span>' : '<span class="text-red-400 text-xs">禁用</span>'}</td>
+            <td class="px-4 py-3 text-gray-500 text-xs">${u.created_at ? u.created_at.split('T')[0] : '-'}</td>
+            <td class="px-4 py-3 space-x-2">
+                <select onchange="changeRole(${u.id}, this.value)" class="bg-white/5 border border-white/10 rounded text-xs px-2 py-1">
+                    <option value="user" ${u.role==='user'?'selected':''}>普通用户</option>
+                    <option value="operator" ${u.role==='operator'?'selected':''}>运营</option>
+                    <option value="admin" ${u.role==='admin'?'selected':''}>管理员</option>
+                </select>
+                <button onclick="toggleActive(${u.id}, ${u.is_active})" class="text-xs ${u.is_active ? 'text-orange-400 hover:text-orange-300' : 'text-green-400 hover:text-green-300'} transition">${u.is_active ? '禁用' : '启用'}</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500">暂无用户</td></tr>';
+
+    renderPagination(d.page, d.pages);
+}
+
+async function changeRole(uid, role) {
+    await fetch(`/api/admin/users/${uid}`, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
+    loadUsers();
+}
+
+async function toggleActive(uid, current) {
+    await fetch(`/api/admin/users/${uid}`, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !current }) });
+    loadUsers();
+}
+
+function renderPagination(page, pages) {
+    const c = document.getElementById('pagination');
+    if (pages <= 1) { c.innerHTML = ''; return; }
+    let h = '';
+    if (page > 1) h += `<button onclick="goPage(${page-1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>`;
+    for (let i = 1; i <= pages; i++) {
+        if (i === page) h += `<button class="px-3 py-1 rounded bg-[#6A0DAD] text-sm font-bold">${i}</button>`;
+        else if (Math.abs(i-page)<=2||i===1||i===pages) h += `<button onclick="goPage(${i})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">${i}</button>`;
+        else if (Math.abs(i-page)===3) h += '<span class="text-gray-500">...</span>';
+    }
+    if (page < pages) h += `<button onclick="goPage(${page+1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>`;
+    c.innerHTML = h;
+}
+function goPage(p) { currentPage = p; loadUsers(); }
+
+loadUsers();
+</script>
+</body>
+</html>

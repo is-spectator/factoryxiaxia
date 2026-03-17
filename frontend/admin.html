@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>管理后台 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .card:hover { border-color: rgba(106,13,173,0.3); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-4">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span>
+        </a>
+        <span class="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-bold">ADMIN</span>
+    </div>
+    <div class="flex items-center space-x-4">
+        <a href="index.html" class="text-xs text-gray-400 hover:text-white transition">返回前台</a>
+        <button onclick="logout()" class="text-xs text-red-400 hover:text-red-300 transition">退出</button>
+    </div>
+</nav>
+<div class="flex pt-16 min-h-screen">
+    <aside class="w-56 border-r border-white/5 bg-black/20 hidden lg:block fixed top-16 bottom-0 overflow-y-auto">
+        <nav class="p-4 space-y-1">
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 ml-3">总览</p>
+            <a class="sidebar-active flex items-center space-x-3 px-4 py-2.5 rounded-lg transition text-sm" href="admin.html">
+                <span class="iconify" data-icon="mdi:view-dashboard-outline"></span><span>数据看板</span>
+            </a>
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mt-6 mb-3 ml-3">管理</p>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-users.html">
+                <span class="iconify" data-icon="mdi:account-group-outline"></span><span>用户管理</span>
+            </a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-workers.html">
+                <span class="iconify" data-icon="mdi:robot-outline"></span><span>员工管理</span>
+            </a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-orders.html">
+                <span class="iconify" data-icon="mdi:clipboard-list-outline"></span><span>订单管理</span>
+            </a>
+        </nav>
+    </aside>
+    <main class="flex-grow lg:ml-56 p-6 lg:p-8 overflow-y-auto">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-2xl font-bold mb-8">数据看板</h1>
+            <!-- 指标卡片 -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8" id="stat-cards">
+                <div class="card p-5"><p class="text-xs text-gray-500 mb-1">注册用户</p><p class="text-2xl font-bold" id="s-users">-</p></div>
+                <div class="card p-5"><p class="text-xs text-gray-500 mb-1">数字员工</p><p class="text-2xl font-bold" id="s-workers">-</p></div>
+                <div class="card p-5"><p class="text-xs text-gray-500 mb-1">总订单数</p><p class="text-2xl font-bold" id="s-orders">-</p></div>
+                <div class="card p-5"><p class="text-xs text-gray-500 mb-1">累计营收</p><p class="text-2xl font-bold text-green-400" id="s-revenue">-</p></div>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                <div class="card p-5"><div class="flex items-center justify-between"><div><p class="text-xs text-gray-500 mb-1">待处理订单</p><p class="text-xl font-bold text-yellow-400" id="s-pending">-</p></div><span class="iconify text-3xl text-yellow-400/30" data-icon="mdi:clock-outline"></span></div></div>
+                <div class="card p-5"><div class="flex items-center justify-between"><div><p class="text-xs text-gray-500 mb-1">服务中订单</p><p class="text-xl font-bold text-green-400" id="s-active">-</p></div><span class="iconify text-3xl text-green-400/30" data-icon="mdi:play-circle-outline"></span></div></div>
+                <div class="card p-5"><div class="flex items-center justify-between"><div><p class="text-xs text-gray-500 mb-1">在线员工</p><p class="text-xl font-bold text-cyan-400" id="s-online">-</p></div><span class="iconify text-3xl text-cyan-400/30" data-icon="mdi:robot-happy-outline"></span></div></div>
+            </div>
+            <!-- 图表 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="card p-6 lg:col-span-2">
+                    <h3 class="font-bold mb-4 text-sm">近7天订单趋势</h3>
+                    <canvas id="chart-orders" height="200"></canvas>
+                </div>
+                <div class="card p-6">
+                    <h3 class="font-bold mb-4 text-sm">分类订单占比</h3>
+                    <canvas id="chart-category" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) { window.location.href = 'login.html'; }
+
+function logout() { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; }
+
+async function loadStats() {
+    try {
+        const res = await fetch('/api/admin/stats', { headers: { 'Authorization': 'Bearer ' + token }});
+        if (res.status === 403) { alert('无管理员权限'); window.location.href = 'profile.html'; return; }
+        const d = await res.json();
+        document.getElementById('s-users').textContent = d.total_users;
+        document.getElementById('s-workers').textContent = d.total_workers;
+        document.getElementById('s-orders').textContent = d.total_orders;
+        document.getElementById('s-revenue').textContent = '￥' + d.total_revenue.toFixed(2);
+        document.getElementById('s-pending').textContent = d.pending_orders;
+        document.getElementById('s-active').textContent = d.active_orders;
+        document.getElementById('s-online').textContent = d.online_workers;
+
+        // 订单趋势折线图
+        new Chart(document.getElementById('chart-orders'), {
+            type: 'line',
+            data: {
+                labels: d.daily_orders.map(x => x.date.slice(5)),
+                datasets: [{
+                    label: '订单数',
+                    data: d.daily_orders.map(x => x.count),
+                    borderColor: '#6A0DAD',
+                    backgroundColor: 'rgba(106,13,173,0.1)',
+                    fill: true, tension: 0.4,
+                }, {
+                    label: '营收(￥)',
+                    data: d.daily_orders.map(x => x.revenue),
+                    borderColor: '#00D2FF',
+                    backgroundColor: 'rgba(0,210,255,0.1)',
+                    fill: true, tension: 0.4, yAxisID: 'y1',
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#999', font: { size: 11 }}}},
+                scales: {
+                    x: { ticks: { color: '#666' }, grid: { color: 'rgba(255,255,255,0.05)' }},
+                    y: { ticks: { color: '#666' }, grid: { color: 'rgba(255,255,255,0.05)' }},
+                    y1: { position: 'right', ticks: { color: '#666' }, grid: { display: false }},
+                }
+            }
+        });
+
+        // 分类饼图
+        const colors = ['#6A0DAD', '#00D2FF', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899', '#0ea5e9'];
+        new Chart(document.getElementById('chart-category'), {
+            type: 'doughnut',
+            data: {
+                labels: d.category_stats.map(x => x.name),
+                datasets: [{ data: d.category_stats.map(x => x.count), backgroundColor: colors.slice(0, d.category_stats.length), borderWidth: 0 }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { color: '#999', font: { size: 11 }, padding: 12 }}}
+            }
+        });
+    } catch(e) { console.error(e); }
+}
+loadStats();
+</script>
+</body>
+</html>

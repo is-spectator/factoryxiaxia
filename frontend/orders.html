@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>我的订单 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .btn-glow:hover { box-shadow: 0 0 20px rgba(106,13,173,0.6); transform: translateY(-2px); }
+        .card-hover:hover { border-color: rgba(106,13,173,0.3); background: rgba(255,255,255,0.04); }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<!-- 导航 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+    </div>
+</nav>
+
+<main class="pt-28 pb-20 px-6 max-w-5xl mx-auto">
+    <!-- 成功提示 -->
+    <div id="success-toast" class="hidden mb-6 bg-green-500/20 border border-green-500/30 rounded-xl p-4 flex items-center">
+        <span class="iconify text-green-400 mr-3 text-xl" data-icon="mdi:check-circle"></span>
+        <span class="text-green-300 text-sm">下单成功！订单号：<span id="new-order-no"></span></span>
+    </div>
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+        <div>
+            <h1 class="text-3xl font-bold mb-1">我的订单</h1>
+            <p class="text-gray-400">管理您的所有数字员工租赁订单</p>
+        </div>
+        <a href="workers.html" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2.5 rounded-xl text-sm font-bold btn-glow transition inline-flex items-center">
+            <span class="iconify mr-1" data-icon="mdi:plus"></span>租赁新员工
+        </a>
+    </div>
+
+    <!-- 状态筛选 -->
+    <div class="flex flex-wrap gap-2 mb-8">
+        <button onclick="filterStatus(null)" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 bg-[#6A0DAD]/30 border-[#6A0DAD] text-white transition" data-s="all">全部</button>
+        <button onclick="filterStatus('pending')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-yellow-500" data-s="pending">待支付</button>
+        <button onclick="filterStatus('paid')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-blue-500" data-s="paid">已支付</button>
+        <button onclick="filterStatus('active')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-green-500" data-s="active">服务中</button>
+        <button onclick="filterStatus('completed')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-gray-400" data-s="completed">已完成</button>
+        <button onclick="filterStatus('cancelled')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-red-500" data-s="cancelled">已取消</button>
+    </div>
+
+    <!-- 订单列表 -->
+    <div id="orders-list" class="space-y-4 mb-10">
+        <div class="text-center py-20 text-gray-500">加载中...</div>
+    </div>
+
+    <!-- 分页 -->
+    <div id="pagination" class="flex justify-center items-center space-x-2"></div>
+</main>
+
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+
+<script>
+    const token = localStorage.getItem('xiaxia_token');
+    if (!token) { window.location.href = 'login.html'; }
+
+    // 显示新订单提示
+    const urlParams = new URLSearchParams(window.location.search);
+    const newOrder = urlParams.get('new_order');
+    if (newOrder) {
+        document.getElementById('success-toast').classList.remove('hidden');
+        document.getElementById('new-order-no').textContent = newOrder;
+        history.replaceState(null, '', 'orders.html');
+    }
+
+    let currentPage = 1;
+    let currentStatus = null;
+
+    const statusConfig = {
+        pending:   { label: '待支付', color: 'text-yellow-400', bg: 'bg-yellow-500/20', icon: 'mdi:clock-outline' },
+        paid:      { label: '已支付', color: 'text-blue-400', bg: 'bg-blue-500/20', icon: 'mdi:credit-card-check-outline' },
+        active:    { label: '服务中', color: 'text-green-400', bg: 'bg-green-500/20', icon: 'mdi:play-circle-outline' },
+        completed: { label: '已完成', color: 'text-gray-400', bg: 'bg-gray-500/20', icon: 'mdi:check-circle-outline' },
+        cancelled: { label: '已取消', color: 'text-red-400', bg: 'bg-red-500/20', icon: 'mdi:close-circle-outline' },
+        refunded:  { label: '已退款', color: 'text-orange-400', bg: 'bg-orange-500/20', icon: 'mdi:cash-refund' },
+    };
+
+    function filterStatus(s) {
+        currentStatus = s;
+        currentPage = 1;
+        document.querySelectorAll('.status-btn').forEach(b => {
+            b.classList.remove('bg-[#6A0DAD]/30', 'border-[#6A0DAD]', 'text-white');
+            b.classList.add('text-gray-400', 'border-white/20');
+        });
+        const target = s ? document.querySelector(`.status-btn[data-s="${s}"]`) : document.querySelector('.status-btn[data-s="all"]');
+        if (target) {
+            target.classList.add('bg-[#6A0DAD]/30', 'border-[#6A0DAD]', 'text-white');
+            target.classList.remove('text-gray-400', 'border-white/20');
+        }
+        loadOrders();
+    }
+
+    async function loadOrders() {
+        let url = `/api/orders?page=${currentPage}&per_page=10`;
+        if (currentStatus) url += `&status=${currentStatus}`;
+
+        try {
+            const res = await fetch(url, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (res.status === 401) { window.location.href = 'login.html'; return; }
+            const data = await res.json();
+            renderOrders(data.orders);
+            renderPagination(data.page, data.pages);
+        } catch(e) {
+            document.getElementById('orders-list').innerHTML = '<div class="text-center py-20 text-red-400">加载失败，请刷新重试</div>';
+        }
+    }
+
+    function renderOrders(orders) {
+        const container = document.getElementById('orders-list');
+        if (!orders || orders.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-20">
+                    <span class="iconify text-6xl text-gray-700 mb-4 inline-block" data-icon="mdi:clipboard-text-off-outline"></span>
+                    <p class="text-gray-500 mb-4">暂无订单</p>
+                    <a href="workers.html" class="text-cyan-400 hover:underline text-sm">去市场逛逛</a>
+                </div>`;
+            return;
+        }
+        container.innerHTML = orders.map(o => {
+            const sc = statusConfig[o.status] || statusConfig.pending;
+            return `
+            <div class="glass-morphism rounded-2xl p-6 border border-transparent card-hover transition-all">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0" style="background: linear-gradient(135deg, ${o.worker_gradient_from || '#6A0DAD'}, ${o.worker_gradient_to || '#00D2FF'})">
+                            <span class="iconify text-2xl" data-icon="${o.worker_icon || 'mdi:robot-happy-outline'}"></span>
+                        </div>
+                        <div>
+                            <h3 class="font-bold">${o.worker_name}</h3>
+                            <p class="text-xs text-gray-500 mt-1">
+                                <span class="mr-3">订单号: ${o.order_no}</span>
+                                <span>${o.created_at ? o.created_at.split('T')[0] : ''}</span>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-6">
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500">时长</p>
+                            <p class="text-sm font-bold">${o.duration_hours}h</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500">金额</p>
+                            <p class="text-sm font-bold">￥${o.total_amount.toFixed(2)}</p>
+                        </div>
+                        <div class="text-center min-w-[70px]">
+                            <span class="${sc.bg} ${sc.color} text-xs px-3 py-1 rounded-full inline-flex items-center">
+                                <span class="iconify mr-1" data-icon="${sc.icon}"></span>${sc.label}
+                            </span>
+                        </div>
+                        ${o.status === 'pending' ? `
+                        <button onclick="cancelOrder(${o.id}, this)" class="text-xs text-red-400 hover:text-red-300 border border-red-400/30 px-3 py-1 rounded-lg hover:bg-red-400/10 transition">取消</button>
+                        ` : ''}
+                    </div>
+                </div>
+                ${o.remark ? `<p class="mt-3 text-xs text-gray-500 border-t border-white/5 pt-3"><span class="iconify inline mr-1" data-icon="mdi:message-text-outline"></span>${o.remark}</p>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    async function cancelOrder(orderId, btn) {
+        if (!confirm('确定取消此订单？')) return;
+        btn.disabled = true;
+        btn.textContent = '取消中...';
+        try {
+            const res = await fetch(`/api/orders/${orderId}/cancel`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.error || '取消失败'); btn.disabled = false; btn.textContent = '取消'; return; }
+            loadOrders();
+        } catch(e) {
+            alert('网络错误');
+            btn.disabled = false;
+            btn.textContent = '取消';
+        }
+    }
+
+    function renderPagination(page, pages) {
+        const container = document.getElementById('pagination');
+        if (pages <= 1) { container.innerHTML = ''; return; }
+        let html = '';
+        if (page > 1) html += `<button onclick="goPage(${page-1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>`;
+        for (let i = 1; i <= pages; i++) {
+            if (i === page) {
+                html += `<button class="px-3 py-1 rounded bg-[#6A0DAD] text-white text-sm font-bold">${i}</button>`;
+            } else if (Math.abs(i - page) <= 2 || i === 1 || i === pages) {
+                html += `<button onclick="goPage(${i})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">${i}</button>`;
+            } else if (Math.abs(i - page) === 3) {
+                html += `<span class="text-gray-500">...</span>`;
+            }
+        }
+        if (page < pages) html += `<button onclick="goPage(${page+1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>`;
+        container.innerHTML = html;
+    }
+
+    function goPage(p) { currentPage = p; loadOrders(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+
+    loadOrders();
+</script>
+</body>
+</html>
