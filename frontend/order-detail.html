@@ -25,6 +25,14 @@
         .btn-primary:hover { box-shadow: 0 0 20px rgba(106,13,173,0.5); transform: translateY(-1px); }
         .btn-danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
         .btn-danger:hover { background: rgba(239,68,68,0.2); }
+        /* 评价星星 */
+        .star-rating { display: inline-flex; gap: 0.25rem; }
+        .star-rating .star { cursor: pointer; font-size: 1.75rem; color: rgba(255,255,255,0.15); transition: color 0.15s, transform 0.15s; }
+        .star-rating .star:hover { transform: scale(1.15); }
+        .star-rating .star.active { color: #facc15; }
+        .star-rating .star.hover-preview { color: #fde68a; }
+        .star-rating-readonly .star { font-size: 1.25rem; cursor: default; }
+        .star-rating-readonly .star.active { color: #facc15; }
     </style>
 </head>
 <body class="overflow-x-hidden min-h-screen">
@@ -93,6 +101,12 @@
             <h3 class="font-bold mb-4 text-sm text-gray-400">支付记录</h3>
             <div id="payments-list" class="space-y-3"></div>
         </div>
+
+        <!-- 评价区域 -->
+        <div id="review-section" class="card p-6 mt-6 hidden">
+            <h3 class="font-bold mb-4 text-sm text-gray-400">服务评价</h3>
+            <div id="review-content"></div>
+        </div>
     </div>
 </main>
 
@@ -103,6 +117,18 @@ if (!token) window.location.href = 'login.html';
 const params = new URLSearchParams(window.location.search);
 const orderId = params.get('order_id');
 if (!orderId) { window.location.href = 'orders.html'; }
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function check401(res) {
+    if (res.status === 401) {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.href = 'login.html';
+        return true;
+    }
+    return false;
+}
 
 const statusMap = {
     pending:   { icon: 'mdi:clock-outline', color: 'text-yellow-400', label: '待支付', desc: '请在30分钟内完成支付，逾期将自动取消' },
@@ -122,8 +148,11 @@ const timelineSteps = [
 
 const statusIndex = { pending: 0, paid: 1, active: 2, completed: 3 };
 
+let selectedRating = 0;
+
 async function loadOrder() {
     const res = await fetch(`/api/orders/${orderId}`, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (check401(res)) return;
     if (!res.ok) { alert('订单不存在'); window.location.href = 'orders.html'; return; }
     const d = await res.json();
     const o = d.order;
@@ -154,6 +183,11 @@ async function loadOrder() {
 
     // 支付记录
     await loadPayments();
+
+    // 评价区域（仅已完成订单显示）
+    if (o.status === 'completed') {
+        renderReviewSection(o.review || null);
+    }
 
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('content').classList.remove('hidden');
@@ -232,6 +266,107 @@ function renderActions(o) {
     }
 }
 
+function renderReviewSection(review) {
+    const section = document.getElementById('review-section');
+    const container = document.getElementById('review-content');
+    section.classList.remove('hidden');
+
+    if (review) {
+        // 已有评价，展示评价内容
+        let starsHtml = '';
+        for (let i = 1; i <= 5; i++) {
+            starsHtml += `<span class="iconify star ${i <= review.rating ? 'active' : ''}" data-icon="${i <= review.rating ? 'mdi:star' : 'mdi:star-outline'}"></span>`;
+        }
+        container.innerHTML = `
+            <div class="space-y-3">
+                <div class="flex items-center gap-3">
+                    <div class="star-rating star-rating-readonly">${starsHtml}</div>
+                    <span class="text-sm text-gray-400">${review.rating} 分</span>
+                </div>
+                <p class="text-sm text-gray-300 leading-relaxed">${esc(review.content)}</p>
+                <p class="text-[10px] text-gray-600">${formatTime(review.created_at)}</p>
+            </div>
+        `;
+    } else {
+        // 未评价，展示评价表单
+        let starsHtml = '';
+        for (let i = 1; i <= 5; i++) {
+            starsHtml += `<span class="iconify star" data-icon="mdi:star-outline" data-star="${i}" onclick="selectStar(${i})" onmouseenter="hoverStar(${i})" onmouseleave="resetStarHover()"></span>`;
+        }
+        container.innerHTML = `
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-500 mb-2 block">评分</label>
+                    <div class="star-rating" id="star-rating">${starsHtml}</div>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-2 block">评价内容</label>
+                    <textarea id="review-text" rows="3" placeholder="分享您的使用体验..."
+                        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50 resize-none"></textarea>
+                </div>
+                <button onclick="submitReview()" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all">提交评价</button>
+            </div>
+        `;
+    }
+}
+
+function hoverStar(n) {
+    const stars = document.querySelectorAll('#star-rating .star');
+    stars.forEach((s, i) => {
+        if (i < n) {
+            s.classList.add('hover-preview');
+            s.dataset.icon = 'mdi:star';
+        } else {
+            s.classList.remove('hover-preview');
+            s.dataset.icon = (i < selectedRating) ? 'mdi:star' : 'mdi:star-outline';
+        }
+    });
+}
+
+function resetStarHover() {
+    const stars = document.querySelectorAll('#star-rating .star');
+    stars.forEach((s, i) => {
+        s.classList.remove('hover-preview');
+        if (i < selectedRating) {
+            s.classList.add('active');
+            s.dataset.icon = 'mdi:star';
+        } else {
+            s.classList.remove('active');
+            s.dataset.icon = 'mdi:star-outline';
+        }
+    });
+}
+
+function selectStar(n) {
+    selectedRating = n;
+    const stars = document.querySelectorAll('#star-rating .star');
+    stars.forEach((s, i) => {
+        if (i < n) {
+            s.classList.add('active');
+            s.dataset.icon = 'mdi:star';
+        } else {
+            s.classList.remove('active');
+            s.dataset.icon = 'mdi:star-outline';
+        }
+    });
+}
+
+async function submitReview() {
+    if (selectedRating === 0) { alert('请选择评分'); return; }
+    const content = document.getElementById('review-text').value.trim();
+    if (!content) { alert('请填写评价内容'); return; }
+
+    const res = await fetch(`/api/orders/${orderId}/review`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: selectedRating, content }),
+    });
+    if (check401(res)) return;
+    const d = await res.json();
+    if (!res.ok) { alert(d.error || '提交评价失败'); return; }
+    loadOrder();
+}
+
 async function doAction(action) {
     const confirmMsg = { cancel: '确定取消订单？', refund: '确定申请退款？', activate: '确定开始服务？', complete: '确定服务已完成？' };
     if (!confirm(confirmMsg[action] || '确定操作？')) return;
@@ -240,6 +375,7 @@ async function doAction(action) {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
     });
+    if (check401(res)) return;
     const d = await res.json();
     if (!res.ok) { alert(d.error || '操作失败'); return; }
     loadOrder();
@@ -247,6 +383,7 @@ async function doAction(action) {
 
 async function loadPayments() {
     const res = await fetch(`/api/orders/${orderId}/payments`, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (check401(res)) return;
     if (!res.ok) return;
     const d = await res.json();
     if (!d.payments || d.payments.length === 0) return;
@@ -258,8 +395,8 @@ async function loadPayments() {
             <div class="flex items-center gap-3">
                 <span class="iconify text-lg ${p.status === 'refunded' ? 'text-orange-400' : 'text-green-400'}" data-icon="${p.status === 'refunded' ? 'mdi:cash-refund' : 'mdi:credit-card-check-outline'}"></span>
                 <div>
-                    <p class="text-xs font-mono text-gray-400">${p.payment_no}</p>
-                    <p class="text-[10px] text-gray-600">${formatTime(p.paid_at)} · ${p.method}</p>
+                    <p class="text-xs font-mono text-gray-400">${esc(p.payment_no)}</p>
+                    <p class="text-[10px] text-gray-600">${formatTime(p.paid_at)} · ${esc(p.method)}</p>
                 </div>
             </div>
             <div class="text-right">

@@ -193,6 +193,7 @@
                 },
                 body: JSON.stringify({ worker_id: parseInt(workerId), duration_hours: hours, remark: remark }),
             });
+            if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
             const data = await res.json();
             if (!res.ok) {
                 alert(data.error || '下单失败');
@@ -200,8 +201,8 @@
                 btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单';
                 return;
             }
-            // 成功 - 跳转到订单列表
-            window.location.href = 'orders.html?new_order=' + data.order.order_no;
+            // 成功 - 跳转到支付页面
+            window.location.href = `pay.html?order_id=${data.order.id}`;
         } catch(e) {
             alert('网络错误，请重试');
             btn.disabled = false;
