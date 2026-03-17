@@ -242,6 +242,7 @@ class Order(db.Model):
     status = db.Column(db.String(20), default="pending")
     remark = db.Column(db.Text, default="")
     paid_at = db.Column(db.DateTime, nullable=True)
+    activated_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     cancelled_at = db.Column(db.DateTime, nullable=True)
     refunded_at = db.Column(db.DateTime, nullable=True)
@@ -266,6 +267,7 @@ class Order(db.Model):
             "status": self.status,
             "remark": self.remark,
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
+            "activated_at": self.activated_at.isoformat() if self.activated_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "cancelled_at": self.cancelled_at.isoformat() if self.cancelled_at else None,
             "refunded_at": self.refunded_at.isoformat() if self.refunded_at else None,
@@ -502,6 +504,9 @@ def login():
 
     if not user or not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
         return jsonify({"error": "用户名/邮箱或密码错误"}), 401
+
+    if not user.is_active:
+        return jsonify({"error": "账号已被禁用，请联系管理员"}), 403
 
     token = create_token(user)
     return jsonify({"message": "登录成功", "token": token, "user": user.to_dict()}), 200
@@ -767,6 +772,7 @@ def activate_order(order_id):
         return jsonify({"error": f"当前状态({order.status})无法激活服务"}), 400
 
     order.status = "active"
+    order.activated_at = datetime.datetime.utcnow()
     db.session.commit()
 
     return jsonify({"message": "服务已开始", "order": order.to_dict()}), 200
@@ -1426,7 +1432,22 @@ def admin_update_order_status(order_id):
     if new_status not in ORDER_STATUSES:
         return jsonify({"error": f"无效状态，可选: {', '.join(ORDER_STATUSES)}"}), 400
 
+    allowed = ORDER_TRANSITIONS.get(order.status, [])
+    if new_status not in allowed:
+        return jsonify({
+            "error": f"状态流转不允许: {order.status} → {new_status}，"
+                     f"当前状态仅可转为: {', '.join(allowed) if allowed else '无(终态)'}",
+        }), 400
+
+    now = datetime.datetime.utcnow()
     order.status = new_status
+    ts_map = {
+        "paid": "paid_at", "active": "activated_at",
+        "completed": "completed_at", "cancelled": "cancelled_at",
+        "refunded": "refunded_at",
+    }
+    if new_status in ts_map:
+        setattr(order, ts_map[new_status], now)
     db.session.commit()
     return jsonify({"message": "状态已更新", "order": order.to_dict()}), 200
 
