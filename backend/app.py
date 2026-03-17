@@ -773,6 +773,9 @@ def activate_order(order_id):
 
     order.status = "active"
     order.activated_at = datetime.datetime.utcnow()
+    send_message(user.id, "服务已开始",
+                 f"订单 {order.order_no} 的服务已开始",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({"message": "服务已开始", "order": order.to_dict()}), 200
@@ -917,11 +920,15 @@ def create_review(order_id):
 
     # 更新员工平均评分
     worker = Worker.query.get(order.worker_id)
+    worker_name = worker.name if worker else "员工"
     if worker:
         avg = db.session.query(db.func.avg(Review.rating)).filter_by(worker_id=worker.id).scalar()
         if avg is not None:
             worker.rating = round(float(avg), 1)
 
+    send_message(user.id, "评价已提交",
+                 f"您对「{worker_name}」的评价已提交，感谢反馈！",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({"message": "评价成功", "review": review.to_dict()}), 201
@@ -1448,6 +1455,15 @@ def admin_update_order_status(order_id):
     }
     if new_status in ts_map:
         setattr(order, ts_map[new_status], now)
+
+    status_labels = {
+        "paid": "已支付", "active": "服务中", "completed": "已完成",
+        "cancelled": "已取消", "refunded": "已退款",
+    }
+    label = status_labels.get(new_status, new_status)
+    send_message(order.user_id, f"订单状态变更: {label}",
+                 f"订单 {order.order_no} 状态已更新为「{label}」",
+                 "order", order.id)
     db.session.commit()
     return jsonify({"message": "状态已更新", "order": order.to_dict()}), 200
 

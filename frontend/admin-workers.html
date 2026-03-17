@@ -13,6 +13,10 @@
         .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
         .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; }
         .modal-bg { background: rgba(0,0,0,0.7); }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: slideIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -108,6 +112,7 @@ let currentPage = 1;
 let categories = [];
 const statusLabel = { online: '<span class="text-green-400">在线</span>', busy: '<span class="text-orange-400">忙碌</span>', offline: '<span class="text-gray-500">离线</span>' };
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
 
 document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') loadWorkers(); });
 
@@ -127,7 +132,7 @@ async function loadWorkers() {
     if (status) url += `&status=${status}`;
 
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token }});
-    if (res.status === 403) { alert('无管理员权限'); return; }
+    if (res.status === 403) { toast('无管理员权限', false); return; }
     const d = await res.json();
 
     document.getElementById('worker-tbody').innerHTML = d.workers.map(w => `
@@ -209,13 +214,17 @@ async function saveWorker() {
         avatar_gradient_to: document.getElementById('f-gto').value,
         description: document.getElementById('f-desc').value.trim(),
     };
-    if (!body.name || !body.hourly_rate) { alert('名称和单价必填'); return; }
+    if (!body.name) { toast('请填写员工名称', false); return; }
+    if (!body.hourly_rate || body.hourly_rate <= 0) { toast('请填写有效的单价（大于0）', false); return; }
+    if (body.level < 1 || body.level > 10 || isNaN(body.level)) { toast('等级须为1-10之间的整数', false); return; }
+    if (isNaN(body.category_id)) { toast('请选择分类', false); return; }
 
     const url = id ? `/api/admin/workers/${id}` : '/api/admin/workers';
     const method = id ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await res.json();
-    if (!res.ok) { alert(d.error || '保存失败'); return; }
+    if (!res.ok) { toast(d.error || '保存失败', false); return; }
+    toast(id ? '员工信息已更新' : '新员工已创建', true);
     closeModal();
     loadWorkers();
 }
