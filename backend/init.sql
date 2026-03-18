@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS orders (
     status VARCHAR(20) DEFAULT 'pending',
     remark TEXT DEFAULT NULL,
     paid_at DATETIME DEFAULT NULL,
+    activated_at DATETIME DEFAULT NULL,
     completed_at DATETIME DEFAULT NULL,
     cancelled_at DATETIME DEFAULT NULL,
     refunded_at DATETIME DEFAULT NULL,
