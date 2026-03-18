@@ -20,6 +20,10 @@
         .btn-pay:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
         @keyframes pulse-glow { 0%,100% { box-shadow: 0 0 20px rgba(106,13,173,0.3); } 50% { box-shadow: 0 0 40px rgba(106,13,173,0.6); } }
         .paying { animation: pulse-glow 1.5s infinite; }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
 <body class="overflow-x-hidden min-h-screen">
@@ -121,7 +125,8 @@ if (!token) window.location.href = 'login.html';
 
 const params = new URLSearchParams(window.location.search);
 const orderId = params.get('order_id');
-if (!orderId) { alert('缺少订单ID'); window.location.href = 'orders.html'; }
+function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
+if (!orderId) { toast('缺少订单ID', false); setTimeout(() => window.location.href = 'orders.html', 1500); }
 
 let selectedMethod = 'mock';
 let order = null;
@@ -139,12 +144,12 @@ function selectMethod(el) {
 async function loadOrder() {
     const res = await fetch(`/api/orders/${orderId}`, { headers: { 'Authorization': 'Bearer ' + token } });
     if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
-    if (!res.ok) { alert('订单不存在或无权访问'); window.location.href = 'orders.html'; return; }
+    if (!res.ok) { toast('订单不存在或无权访问', false); setTimeout(() => window.location.href = 'orders.html', 1500); return; }
     const d = await res.json();
     order = d.order;
 
     if (order.status !== 'pending') {
-        alert('该订单不是待支付状态');
+        toast('该订单不是待支付状态', false);
         window.location.href = 'orders.html';
         return;
     }
@@ -177,7 +182,7 @@ async function doPay() {
         if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
         const d = await res.json();
         if (!res.ok) {
-            alert(d.error || '支付失败');
+            toast(d.error || '支付失败', false);
             btn.disabled = false;
             btn.textContent = '确认支付';
             btn.classList.remove('paying');
@@ -196,7 +201,7 @@ async function doPay() {
             else { countdownEl.textContent = `支付成功！${countdown}秒后自动跳转到订单详情...`; }
         }, 1000);
     } catch(e) {
-        alert('网络错误，请重试');
+        toast('网络错误，请重试', false);
         btn.disabled = false;
         btn.textContent = '确认支付';
         btn.classList.remove('paying');

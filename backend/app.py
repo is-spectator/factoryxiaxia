@@ -5,6 +5,8 @@ import logging
 import json
 import traceback
 
+from sqlalchemy import inspect, text
+
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -250,6 +252,27 @@ ORDER_TRANSITIONS = {
     "cancelled": [],
     "refunded": [],
 }
+
+
+def ensure_order_schema():
+    inspector = inspect(db.engine)
+    if not inspector.has_table("orders"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("orders")}
+    if "activated_at" in column_names:
+        return
+
+    dialect_name = db.engine.dialect.name
+    if dialect_name == "mysql":
+        alter_sql = "ALTER TABLE orders ADD COLUMN activated_at DATETIME NULL AFTER paid_at"
+    else:
+        alter_sql = "ALTER TABLE orders ADD COLUMN activated_at DATETIME"
+
+    with db.engine.begin() as connection:
+        connection.execute(text(alter_sql))
+
+    logger.info("Added missing orders.activated_at column")
 
 
 class Order(db.Model):
@@ -794,6 +817,9 @@ def activate_order(order_id):
 
     order.status = "active"
     order.activated_at = datetime.datetime.utcnow()
+    send_message(user.id, "服务已开始",
+                 f"订单 {order.order_no} 的服务已开始",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({"message": "服务已开始", "order": order.to_dict()}), 200
@@ -938,11 +964,15 @@ def create_review(order_id):
 
     # 更新员工平均评分
     worker = Worker.query.get(order.worker_id)
+    worker_name = worker.name if worker else "员工"
     if worker:
         avg = db.session.query(db.func.avg(Review.rating)).filter_by(worker_id=worker.id).scalar()
         if avg is not None:
             worker.rating = round(float(avg), 1)
 
+    send_message(user.id, "评价已提交",
+                 f"您对「{worker_name}」的评价已提交，感谢反馈！",
+                 "order", order.id)
     db.session.commit()
 
     return jsonify({"message": "评价成功", "review": review.to_dict()}), 201
@@ -1469,6 +1499,15 @@ def admin_update_order_status(order_id):
     }
     if new_status in ts_map:
         setattr(order, ts_map[new_status], now)
+
+    status_labels = {
+        "paid": "已支付", "active": "服务中", "completed": "已完成",
+        "cancelled": "已取消", "refunded": "已退款",
+    }
+    label = status_labels.get(new_status, new_status)
+    send_message(order.user_id, f"订单状态变更: {label}",
+                 f"订单 {order.order_no} 状态已更新为「{label}」",
+                 "order", order.id)
     db.session.commit()
     return jsonify({"message": "状态已更新", "order": order.to_dict()}), 200
 

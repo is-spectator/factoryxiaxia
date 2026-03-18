@@ -23,6 +23,10 @@
         @keyframes pulse { 0%,100% { box-shadow: 0 0 10px rgba(0,210,255,0.3); } 50% { box-shadow: 0 0 20px rgba(0,210,255,0.7); } }
         .btn-primary { background: linear-gradient(135deg, #6A0DAD, #8A2BE2); }
         .btn-primary:hover { box-shadow: 0 0 20px rgba(106,13,173,0.5); transform: translateY(-1px); }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .btn-danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
         .btn-danger:hover { background: rgba(239,68,68,0.2); }
         /* 评价星星 */
@@ -129,6 +133,7 @@ function check401(res) {
     }
     return false;
 }
+function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
 
 const statusMap = {
     pending:   { icon: 'mdi:clock-outline', color: 'text-yellow-400', label: '待支付', desc: '请在30分钟内完成支付，逾期将自动取消' },
@@ -153,7 +158,7 @@ let selectedRating = 0;
 async function loadOrder() {
     const res = await fetch(`/api/orders/${orderId}`, { headers: { 'Authorization': 'Bearer ' + token } });
     if (check401(res)) return;
-    if (!res.ok) { alert('订单不存在'); window.location.href = 'orders.html'; return; }
+    if (!res.ok) { toast('订单不存在', false); setTimeout(() => window.location.href = 'orders.html', 1500); return; }
     const d = await res.json();
     const o = d.order;
 
@@ -352,9 +357,9 @@ function selectStar(n) {
 }
 
 async function submitReview() {
-    if (selectedRating === 0) { alert('请选择评分'); return; }
+    if (selectedRating === 0) { toast('请选择评分', false); return; }
     const content = document.getElementById('review-text').value.trim();
-    if (!content) { alert('请填写评价内容'); return; }
+    if (!content) { toast('请填写评价内容', false); return; }
 
     const res = await fetch(`/api/orders/${orderId}/review`, {
         method: 'POST',
@@ -363,7 +368,8 @@ async function submitReview() {
     });
     if (check401(res)) return;
     const d = await res.json();
-    if (!res.ok) { alert(d.error || '提交评价失败'); return; }
+    if (!res.ok) { toast(d.error || '提交评价失败', false); return; }
+    toast('评价提交成功', true);
     loadOrder();
 }
 
@@ -377,7 +383,8 @@ async function doAction(action) {
     });
     if (check401(res)) return;
     const d = await res.json();
-    if (!res.ok) { alert(d.error || '操作失败'); return; }
+    if (!res.ok) { toast(d.error || '操作失败', false); return; }
+    toast('操作成功', true);
     loadOrder();
 }
 

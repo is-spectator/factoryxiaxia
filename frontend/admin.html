@@ -14,6 +14,10 @@
         .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
         .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
         .card:hover { border-color: rgba(106,13,173,0.3); }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: slideIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -83,11 +87,12 @@ const token = localStorage.getItem('xiaxia_token');
 if (!token) { window.location.href = 'login.html'; }
 
 function logout() { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; }
+function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
 
 async function loadStats() {
     try {
         const res = await fetch('/api/admin/stats', { headers: { 'Authorization': 'Bearer ' + token }});
-        if (res.status === 403) { alert('无管理员权限'); window.location.href = 'profile.html'; return; }
+        if (res.status === 403) { toast('无管理员权限', false); setTimeout(() => window.location.href = 'profile.html', 1500); return; }
         const d = await res.json();
         document.getElementById('s-users').textContent = d.total_users;
         document.getElementById('s-workers').textContent = d.total_workers;

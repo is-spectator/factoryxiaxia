@@ -435,11 +435,11 @@ class TestSecurity:
         assert data["strategy"] == "popular"
 
 
-class TestSchemaMigration:
+class TestSchemaMigrations:
     def test_ensure_order_schema_adds_missing_activated_at(self, app_module, db):
         with app_module.app.app_context():
             db.drop_all()
-            db.session.execute(db.text("""
+            db.session.execute(app_module.text("""
                 CREATE TABLE orders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     order_no VARCHAR(30) NOT NULL UNIQUE,
@@ -448,7 +448,7 @@ class TestSchemaMigration:
                     duration_hours INTEGER NOT NULL,
                     total_amount NUMERIC(10, 2) NOT NULL,
                     status VARCHAR(20) DEFAULT 'pending',
-                    remark TEXT DEFAULT NULL,
+                    remark TEXT DEFAULT '',
                     paid_at DATETIME DEFAULT NULL,
                     completed_at DATETIME DEFAULT NULL,
                     cancelled_at DATETIME DEFAULT NULL,
@@ -461,5 +461,11 @@ class TestSchemaMigration:
 
             app_module.ensure_order_schema()
 
-            columns = {row[1] for row in db.session.execute(db.text("PRAGMA table_info(orders)"))}
-            assert "activated_at" in columns
+            column_names = {column["name"] for column in app_module.inspect(db.engine).get_columns("orders")}
+            assert "activated_at" in column_names
+
+    def test_ensure_order_schema_is_idempotent(self, app_module, db):
+        with app_module.app.app_context():
+            app_module.ensure_order_schema()
+            column_names = [column["name"] for column in app_module.inspect(db.engine).get_columns("orders") if column["name"] == "activated_at"]
+            assert column_names == ["activated_at"]

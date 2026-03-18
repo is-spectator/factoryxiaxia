@@ -12,6 +12,10 @@
         .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
         .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: slideIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -81,7 +85,23 @@ const statusConf = {
     refunded:  { label: '已退款', cls: 'bg-orange-500/20 text-orange-400' },
 };
 
+const ORDER_TRANSITIONS = {
+    pending: ['paid', 'cancelled'],
+    paid: ['active', 'refunded'],
+    active: ['completed', 'refunded'],
+    completed: [],
+    cancelled: [],
+    refunded: [],
+};
+
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function toast(msg, ok) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
 document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') loadOrders(); });
 
 async function loadOrders() {
@@ -92,7 +112,7 @@ async function loadOrders() {
     if (status) url += `&status=${status}`;
 
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token }});
-    if (res.status === 403) { alert('无管理员权限'); return; }
+    if (res.status === 403) { toast('无管理员权限', false); return; }
     const d = await res.json();
 
     document.getElementById('order-tbody').innerHTML = d.orders.map(o => {
@@ -114,9 +134,11 @@ async function loadOrders() {
             <td class="px-4 py-3"><span class="text-[10px] px-2 py-0.5 rounded-full ${sc.cls}">${sc.label}</span></td>
             <td class="px-4 py-3 text-xs text-gray-500">${o.created_at ? o.created_at.split('T')[0] : '-'}</td>
             <td class="px-4 py-3">
-                <select onchange="changeStatus(${o.id}, this.value)" class="bg-white/5 border border-white/10 rounded text-xs px-2 py-1">
-                    ${Object.entries(statusConf).map(([k,v]) => `<option value="${k}" ${o.status===k?'selected':''}>${v.label}</option>`).join('')}
-                </select>
+                ${(ORDER_TRANSITIONS[o.status] || []).length > 0 ? `
+                <select onchange="changeStatus(${o.id}, this.value, '${o.status}')" class="bg-white/5 border border-white/10 rounded text-xs px-2 py-1">
+                    <option value="">操作...</option>
+                    ${(ORDER_TRANSITIONS[o.status] || []).map(k => `<option value="${k}">→ ${statusConf[k].label}</option>`).join('')}
+                </select>` : '<span class="text-[10px] text-gray-600">终态</span>'}
             </td>
         </tr>`;
     }).join('') || '<tr><td colspan="8" class="text-center py-10 text-gray-500">暂无订单</td></tr>';
@@ -124,13 +146,19 @@ async function loadOrders() {
     renderPagination(d.page, d.pages);
 }
 
-async function changeStatus(orderId, newStatus) {
+async function changeStatus(orderId, newStatus, fromStatus) {
+    if (!newStatus) return;
+    const fromLabel = statusConf[fromStatus]?.label || fromStatus;
+    const toLabel = statusConf[newStatus]?.label || newStatus;
+    if (!confirm(`确认将订单状态从「${fromLabel}」变更为「${toLabel}」？`)) { loadOrders(); return; }
     const res = await fetch(`/api/admin/orders/${orderId}/status`, {
         method: 'PUT',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
     });
-    if (!res.ok) { const d = await res.json(); alert(d.error || '更新失败'); }
+    const d = await res.json();
+    if (!res.ok) { toast(d.error || '更新失败', false); }
+    else { toast(`订单状态已更新: ${fromLabel} → ${toLabel}`, true); }
     loadOrders();
 }
 

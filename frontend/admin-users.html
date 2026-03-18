@@ -12,6 +12,10 @@
         .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
         .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: slideIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -72,6 +76,7 @@ let currentPage = 1;
 const roleLabels = { user: '普通用户', operator: '运营', admin: '管理员' };
 const roleBadge = { user: 'bg-gray-500/20 text-gray-400', operator: 'bg-blue-500/20 text-blue-400', admin: 'bg-red-500/20 text-red-400' };
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
 
 document.getElementById('kw').addEventListener('keydown', e => { if (e.key === 'Enter') loadUsers(); });
 
@@ -83,7 +88,7 @@ async function loadUsers() {
     if (role) url += `&role=${role}`;
 
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token }});
-    if (res.status === 403) { alert('无管理员权限'); return; }
+    if (res.status === 403) { toast('无管理员权限', false); return; }
     const d = await res.json();
 
     document.getElementById('user-tbody').innerHTML = d.users.map(u => `
@@ -109,12 +114,20 @@ async function loadUsers() {
 }
 
 async function changeRole(uid, role) {
-    await fetch(`/api/admin/users/${uid}`, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
+    const res = await fetch(`/api/admin/users/${uid}`, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
+    const d = await res.json();
+    if (res.ok) toast(`角色已更新为「${roleLabels[role] || role}」`, true);
+    else toast(d.error || '操作失败', false);
     loadUsers();
 }
 
 async function toggleActive(uid, current) {
-    await fetch(`/api/admin/users/${uid}`, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !current }) });
+    const action = current ? '禁用' : '启用';
+    if (current && !confirm(`确定要禁用该用户？禁用后用户将无法登录。`)) return;
+    const res = await fetch(`/api/admin/users/${uid}`, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !current }) });
+    const d = await res.json();
+    if (res.ok) toast(`用户已${action}`, true);
+    else toast(d.error || '操作失败', false);
     loadUsers();
 }
 
