@@ -1,9 +1,21 @@
+"""虾虾工厂 — Flask 应用入口
+
+本文件仅负责：
+1. 创建 Flask app 实例
+2. 初始化扩展 (db, limiter, CORS)
+3. 注册蓝图 (routes/*)
+4. 设置中间件 (安全头, 日志, 异常处理)
+
+业务逻辑已拆分至:
+- models.py        — 数据模型
+- extensions.py    — Flask 扩展实例
+- utils/auth.py    — JWT / 认证
+- utils/helpers.py — 通用工具
+- services/        — 业务服务
+- routes/          — 路由蓝图
+"""
 import os
 import datetime
-import re
-import logging
-import json
-import traceback
 
 from sqlalchemy import inspect, text
 
@@ -16,29 +28,13 @@ import bcrypt
 import jwt
 from sqlalchemy import inspect
 
-# ===== 结构化日志 =====
+from extensions import db, limiter
+from utils.helpers import setup_logging, send_alert
 
-
-class JsonFormatter(logging.Formatter):
-    def format(self, record):
-        log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        if record.exc_info and record.exc_info[0]:
-            log_entry["exception"] = traceback.format_exception(*record.exc_info)
-        return json.dumps(log_entry, ensure_ascii=False)
-
-
-handler = logging.StreamHandler()
-handler.setFormatter(JsonFormatter())
-logging.basicConfig(level=logging.INFO, handlers=[handler])
-logger = logging.getLogger("xiaxia")
+# ===== 日志 =====
+logger = setup_logging()
 
 # ===== Flask 应用 =====
-
 app = Flask(__name__)
 CORS(app)
 
@@ -46,26 +42,18 @@ DB_USER = os.environ.get("DB_USER", "xiaxia")
 DB_PASS = os.environ.get("DB_PASS", "xiaxia_secret_2026")
 DB_HOST = os.environ.get("DB_HOST", "db")
 DB_NAME = os.environ.get("DB_NAME", "xiaxia_factory")
-JWT_SECRET = os.environ.get("JWT_SECRET", "xiaxia-jwt-secret-key-2026")
-ALERT_WEBHOOK_URL = os.environ.get("ALERT_WEBHOOK_URL", "")
 
 app.config["SQLALCHEMY_DATABASE_URI"] = (
     f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}?charset=utf8mb4"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-db = SQLAlchemy(app)
+# ===== 初始化扩展 =====
+db.init_app(app)
+limiter.init_app(app)
+limiter._default_limits = [os.environ.get("RATE_LIMIT_DEFAULT", "60/minute")]
 
-# ===== 限流 =====
-
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=[os.environ.get("RATE_LIMIT_DEFAULT", "60/minute")],
-    storage_uri="memory://",
-)
-
-# ===== 安全响应头 + 请求日志 =====
+# ===== 中间件 =====
 
 
 @app.after_request
@@ -74,7 +62,6 @@ def add_security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # 请求日志
     duration = ""
     if hasattr(g, "request_start"):
         duration = f" {(datetime.datetime.utcnow() - g.request_start).total_seconds()*1000:.0f}ms"
@@ -86,24 +73,8 @@ def add_security_headers(response):
 def before_request_hook():
     g.request_start = datetime.datetime.utcnow()
 
-# ===== 全局异常处理 + 告警 =====
 
-
-def send_alert(title, detail=""):
-    """发送异常告警到 Webhook（钉钉/飞书/Slack）"""
-    if not ALERT_WEBHOOK_URL:
-        return
-    try:
-        import urllib.request
-        payload = json.dumps({
-            "msgtype": "text",
-            "text": {"content": f"[虾虾工厂告警] {title}\n{detail}"}
-        }).encode("utf-8")
-        req = urllib.request.Request(ALERT_WEBHOOK_URL, data=payload,
-                                     headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        logger.warning("告警发送失败")
+# ===== 异常处理 =====
 
 
 @app.errorhandler(500)
@@ -850,734 +821,26 @@ def complete_order(order_id):
     return jsonify({"message": "服务已完成", "order": order.to_dict()}), 200
 
 
-@app.route("/api/orders/<int:order_id>/refund", methods=["POST"])
-def refund_order(order_id):
-    """申请退款（paid/active → refunded）"""
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    order = Order.query.get(order_id)
-    if not order:
-        return jsonify({"error": "订单不存在"}), 404
-    if order.user_id != user.id:
-        return jsonify({"error": "无权操作此订单"}), 403
-    if "refunded" not in ORDER_TRANSITIONS.get(order.status, []):
-        return jsonify({"error": f"当前状态({order.status})无法退款"}), 400
-
-    now = datetime.datetime.utcnow()
-    order.status = "refunded"
-    order.refunded_at = now
-
-    # 标记支付记录为已退款
-    payment = Payment.query.filter_by(order_id=order.id, status="success").first()
-    if payment:
-        payment.status = "refunded"
-        payment.refunded_at = now
-
-    send_message(user.id, "退款成功",
-                 f"订单 {order.order_no} 已退款，金额 ￥{float(order.total_amount):.2f}",
-                 "order", order.id)
-    db.session.commit()
-
-    return jsonify({"message": "退款成功", "order": order.to_dict()}), 200
-
-
-@app.route("/api/orders/<int:order_id>/payments", methods=["GET"])
-def get_order_payments(order_id):
-    """查看订单的支付记录"""
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    order = Order.query.get(order_id)
-    if not order:
-        return jsonify({"error": "订单不存在"}), 404
-    if order.user_id != user.id:
-        return jsonify({"error": "无权查看"}), 403
-
-    payments = Payment.query.filter_by(order_id=order.id).order_by(Payment.created_at.desc()).all()
-    return jsonify({"payments": [p.to_dict() for p in payments]}), 200
-
-
-@app.route("/api/orders/cancel-expired", methods=["POST"])
-def cancel_expired_orders():
-    """定时任务：取消超时未支付订单（创建超过30分钟仍为pending）"""
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=30)
-    expired = Order.query.filter(
-        Order.status == "pending",
-        Order.created_at < cutoff,
-    ).all()
-
-    count = 0
-    for order in expired:
-        order.status = "cancelled"
-        order.cancelled_at = datetime.datetime.utcnow()
-        send_message(order.user_id, "订单已超时取消",
-                     f"订单 {order.order_no} 因超时未支付已自动取消",
-                     "order", order.id)
-        count += 1
-
-    db.session.commit()
-    return jsonify({"message": f"已取消 {count} 个超时订单", "cancelled_count": count}), 200
-
-
-# ===== 评价 API =====
-
-@app.route("/api/orders/<int:order_id>/review", methods=["POST"])
-def create_review(order_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    order = Order.query.get(order_id)
-    if not order:
-        return jsonify({"error": "订单不存在"}), 404
-    if order.user_id != user.id:
-        return jsonify({"error": "无权评价此订单"}), 403
-    if order.status != "completed":
-        return jsonify({"error": "只能评价已完成的订单"}), 400
-
-    existing = Review.query.filter_by(order_id=order.id).first()
-    if existing:
-        return jsonify({"error": "该订单已评价"}), 400
-
-    data = request.get_json(silent=True) or {}
-    rating = data.get("rating")
-    content = (data.get("content") or "").strip()
-
-    if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
-        return jsonify({"error": "评分为1-5的整数"}), 400
-
-    review = Review(
-        order_id=order.id,
-        user_id=user.id,
-        worker_id=order.worker_id,
-        rating=rating,
-        content=content,
-    )
-    db.session.add(review)
-
-    # 更新员工平均评分
-    worker = Worker.query.get(order.worker_id)
-    worker_name = worker.name if worker else "员工"
-    if worker:
-        avg = db.session.query(db.func.avg(Review.rating)).filter_by(worker_id=worker.id).scalar()
-        if avg is not None:
-            worker.rating = round(float(avg), 1)
-
-    send_message(user.id, "评价已提交",
-                 f"您对「{worker_name}」的评价已提交，感谢反馈！",
-                 "order", order.id)
-    db.session.commit()
-
-    return jsonify({"message": "评价成功", "review": review.to_dict()}), 201
-
-
-@app.route("/api/workers/<int:worker_id>/reviews", methods=["GET"])
-def get_worker_reviews(worker_id):
-    worker = Worker.query.get(worker_id)
-    if not worker:
-        return jsonify({"error": "员工不存在"}), 404
-
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
-    per_page = min(per_page, 50)
-
-    query = Review.query.filter_by(worker_id=worker_id).order_by(Review.created_at.desc())
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-
-    return jsonify({
-        "reviews": [r.to_dict() for r in pagination.items],
-        "total": pagination.total,
-        "page": pagination.page,
-        "pages": pagination.pages,
-    }), 200
-
-
-# ===== 站内消息 API =====
-
-@app.route("/api/messages", methods=["GET"])
-def get_messages():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
-    per_page = min(per_page, 50)
-    is_read = request.args.get("is_read", type=str)
-
-    query = Message.query.filter_by(user_id=user.id)
-    if is_read == "true":
-        query = query.filter_by(is_read=True)
-    elif is_read == "false":
-        query = query.filter_by(is_read=False)
-    query = query.order_by(Message.created_at.desc())
-
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    unread_count = Message.query.filter_by(user_id=user.id, is_read=False).count()
-
-    return jsonify({
-        "messages": [m.to_dict() for m in pagination.items],
-        "total": pagination.total,
-        "unread_count": unread_count,
-        "page": pagination.page,
-        "pages": pagination.pages,
-    }), 200
-
-
-@app.route("/api/messages/<int:msg_id>/read", methods=["POST"])
-def mark_message_read(msg_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    msg = Message.query.get(msg_id)
-    if not msg or msg.user_id != user.id:
-        return jsonify({"error": "消息不存在"}), 404
-
-    msg.is_read = True
-    db.session.commit()
-    return jsonify({"message": "已读"}), 200
-
-
-@app.route("/api/messages/read-all", methods=["POST"])
-def mark_all_read():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    Message.query.filter_by(user_id=user.id, is_read=False).update({"is_read": True})
-    db.session.commit()
-    return jsonify({"message": "全部已读"}), 200
-
-
-@app.route("/api/messages/unread-count", methods=["GET"])
-def unread_count():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    count = Message.query.filter_by(user_id=user.id, is_read=False).count()
-    return jsonify({"unread_count": count}), 200
-
-
-# ===== 收藏 API =====
-
-@app.route("/api/favorites", methods=["GET"])
-def get_favorites():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    favs = Favorite.query.filter_by(user_id=user.id).order_by(Favorite.created_at.desc()).all()
-    return jsonify({"favorites": [f.to_dict() for f in favs]}), 200
-
-
-@app.route("/api/favorites/<int:worker_id>", methods=["POST"])
-def add_favorite(worker_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    worker = Worker.query.get(worker_id)
-    if not worker:
-        return jsonify({"error": "员工不存在"}), 404
-
-    existing = Favorite.query.filter_by(user_id=user.id, worker_id=worker_id).first()
-    if existing:
-        return jsonify({"message": "已收藏", "favorite": existing.to_dict()}), 200
-
-    fav = Favorite(user_id=user.id, worker_id=worker_id)
-    db.session.add(fav)
-    db.session.commit()
-    return jsonify({"message": "收藏成功", "favorite": fav.to_dict()}), 201
-
-
-@app.route("/api/favorites/<int:worker_id>", methods=["DELETE"])
-def remove_favorite(worker_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    fav = Favorite.query.filter_by(user_id=user.id, worker_id=worker_id).first()
-    if not fav:
-        return jsonify({"error": "未收藏"}), 404
-
-    db.session.delete(fav)
-    db.session.commit()
-    return jsonify({"message": "已取消收藏"}), 200
-
-
-@app.route("/api/favorites/<int:worker_id>/check", methods=["GET"])
-def check_favorite(worker_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    exists = Favorite.query.filter_by(user_id=user.id, worker_id=worker_id).first() is not None
-    return jsonify({"is_favorited": exists}), 200
-
-
-# ===== 推荐 API =====
-
-@app.route("/api/recommendations", methods=["GET"])
-def get_recommendations():
-    """基于用户历史订单推荐相似分类员工"""
-    user = get_current_user()
-    limit = request.args.get("limit", 6, type=int)
-    limit = min(limit, 20)
-
-    if user:
-        # 获取用户历史订单涉及的分类
-        ordered_cats = db.session.query(Worker.category_id).join(
-            Order, Order.worker_id == Worker.id
-        ).filter(Order.user_id == user.id).distinct().all()
-        cat_ids = [c[0] for c in ordered_cats]
-
-        # 获取用户已经下过单的员工ID
-        ordered_worker_ids = db.session.query(Order.worker_id).filter(
-            Order.user_id == user.id
-        ).distinct().all()
-        exclude_ids = [w[0] for w in ordered_worker_ids]
-
-        if cat_ids:
-            # 推荐同分类、未使用过的员工
-            query = Worker.query.filter(
-                Worker.category_id.in_(cat_ids),
-                Worker.status != "offline",
-            )
-            if exclude_ids:
-                query = query.filter(~Worker.id.in_(exclude_ids))
-            recs = query.order_by(Worker.rating.desc(), Worker.total_orders.desc()).limit(limit).all()
-
-            # 不足则补充热门员工
-            if len(recs) < limit:
-                existing_ids = [w.id for w in recs] + exclude_ids
-                extra = Worker.query.filter(
-                    Worker.status != "offline",
-                    ~Worker.id.in_(existing_ids) if existing_ids else True,
-                ).order_by(Worker.total_orders.desc()).limit(limit - len(recs)).all()
-                recs.extend(extra)
-
-            return jsonify({"recommendations": [w.to_brief_dict() for w in recs], "strategy": "personalized"}), 200
-
-    # 未登录或无历史 → 热门推荐
-    hot = Worker.query.filter(Worker.status != "offline").order_by(
-        Worker.total_orders.desc(), Worker.rating.desc()
-    ).limit(limit).all()
-    return jsonify({"recommendations": [w.to_brief_dict() for w in hot], "strategy": "popular"}), 200
-
-
-# ===== 管理后台 API =====
-
-@app.route("/api/admin/stats", methods=["GET"])
-def admin_stats():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    total_users = User.query.count()
-    total_workers = Worker.query.count()
-    total_orders = Order.query.count()
-    total_revenue = db.session.query(db.func.coalesce(db.func.sum(Order.total_amount), 0)).filter(
-        Order.status.in_(["paid", "active", "completed"])
-    ).scalar()
-    pending_orders = Order.query.filter_by(status="pending").count()
-    active_orders = Order.query.filter_by(status="active").count()
-    online_workers = Worker.query.filter_by(status="online").count()
-
-    # 最近7天订单趋势
-    today = datetime.datetime.utcnow().date()
-    daily_orders = []
-    for i in range(6, -1, -1):
-        d = today - datetime.timedelta(days=i)
-        start = datetime.datetime.combine(d, datetime.time.min)
-        end = datetime.datetime.combine(d, datetime.time.max)
-        count = Order.query.filter(Order.created_at.between(start, end)).count()
-        revenue = db.session.query(db.func.coalesce(db.func.sum(Order.total_amount), 0)).filter(
-            Order.created_at.between(start, end)
-        ).scalar()
-        daily_orders.append({"date": d.isoformat(), "count": count, "revenue": float(revenue)})
-
-    # 分类订单占比
-    cat_stats = db.session.query(
-        Category.name, db.func.count(Order.id)
-    ).join(Worker, Worker.category_id == Category.id).join(
-        Order, Order.worker_id == Worker.id
-    ).group_by(Category.name).all()
-
-    return jsonify({
-        "total_users": total_users,
-        "total_workers": total_workers,
-        "total_orders": total_orders,
-        "total_revenue": float(total_revenue),
-        "pending_orders": pending_orders,
-        "active_orders": active_orders,
-        "online_workers": online_workers,
-        "daily_orders": daily_orders,
-        "category_stats": [{"name": name, "count": count} for name, count in cat_stats],
-    }), 200
-
-
-@app.route("/api/admin/users", methods=["GET"])
-def admin_list_users():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
-    per_page = min(per_page, 100)
-    keyword = request.args.get("keyword", "", type=str).strip()
-    role = request.args.get("role", type=str)
-
-    query = User.query
-    if keyword:
-        like_kw = f"%{keyword}%"
-        query = query.filter(db.or_(User.username.like(like_kw), User.email.like(like_kw)))
-    if role:
-        query = query.filter_by(role=role)
-    query = query.order_by(User.id.desc())
-
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    return jsonify({
-        "users": [u.to_dict() for u in pagination.items],
-        "total": pagination.total,
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "pages": pagination.pages,
-    }), 200
-
-
-@app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
-def admin_update_user(user_id):
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({"error": "用户不存在"}), 404
-
-    data = request.get_json(silent=True) or {}
-
-    if "role" in data and data["role"] in ROLES:
-        if (admin.role or "user") != "admin" and data["role"] == "admin":
-            return jsonify({"error": "仅超管可授予admin角色"}), 403
-        user.role = data["role"]
-    if "is_active" in data:
-        if user.id == admin.id:
-            return jsonify({"error": "不能禁用自己"}), 400
-        user.is_active = bool(data["is_active"])
-
-    db.session.commit()
-    return jsonify({"message": "更新成功", "user": user.to_dict()}), 200
-
-
-@app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
-def admin_delete_user(user_id):
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-    if (admin.role or "user") != "admin":
-        return jsonify({"error": "仅超管可删除用户"}), 403
-    if user_id == admin.id:
-        return jsonify({"error": "不能删除自己"}), 400
-
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({"error": "用户不存在"}), 404
-
-    # 有关联订单的用户不能物理删除，改为禁用
-    order_count = Order.query.filter_by(user_id=user_id).count()
-    if order_count > 0:
-        user.is_active = False
-        user.username = f"_deleted_{user.id}_{user.username}"
-        db.session.commit()
-        return jsonify({"message": "用户已禁用（存在关联订单，无法物理删除）"}), 200
-
-    db.session.delete(user)
-    db.session.commit()
-    return jsonify({"message": "删除成功"}), 200
-
-
-@app.route("/api/admin/workers", methods=["GET"])
-def admin_list_workers():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
-    per_page = min(per_page, 100)
-    keyword = request.args.get("keyword", "", type=str).strip()
-    category_id = request.args.get("category_id", type=int)
-    status = request.args.get("status", type=str)
-
-    query = Worker.query
-    if keyword:
-        like_kw = f"%{keyword}%"
-        query = query.filter(db.or_(Worker.name.like(like_kw), Worker.skills.like(like_kw)))
-    if category_id:
-        query = query.filter_by(category_id=category_id)
-    if status:
-        query = query.filter_by(status=status)
-    query = query.order_by(Worker.id.desc())
-
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    return jsonify({
-        "workers": [w.to_dict() for w in pagination.items],
-        "total": pagination.total,
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "pages": pagination.pages,
-    }), 200
-
-
-@app.route("/api/admin/workers", methods=["POST"])
-def admin_create_worker():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    category_id = data.get("category_id")
-    hourly_rate = data.get("hourly_rate")
-
-    if not name or not category_id or hourly_rate is None:
-        return jsonify({"error": "名称、分类和单价为必填"}), 400
-
-    cat = Category.query.get(category_id)
-    if not cat:
-        return jsonify({"error": "分类不存在"}), 400
-
-    worker = Worker(
-        name=name,
-        category_id=category_id,
-        avatar_icon=data.get("avatar_icon", "mdi:robot-happy-outline"),
-        avatar_gradient_from=data.get("avatar_gradient_from", "#6A0DAD"),
-        avatar_gradient_to=data.get("avatar_gradient_to", "#00D2FF"),
-        level=data.get("level", 5),
-        skills=data.get("skills", ""),
-        description=data.get("description", ""),
-        hourly_rate=hourly_rate,
-        billing_unit=data.get("billing_unit", "时薪"),
-        status=data.get("status", "online"),
-    )
-    db.session.add(worker)
-    db.session.commit()
-    return jsonify({"message": "创建成功", "worker": worker.to_dict()}), 201
-
-
-@app.route("/api/admin/workers/<int:worker_id>", methods=["PUT"])
-def admin_update_worker(worker_id):
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    worker = Worker.query.get(worker_id)
-    if not worker:
-        return jsonify({"error": "数字员工不存在"}), 404
-
-    data = request.get_json(silent=True) or {}
-    for field in ["name", "avatar_icon", "avatar_gradient_from", "avatar_gradient_to",
-                  "skills", "description", "billing_unit", "status"]:
-        if field in data:
-            setattr(worker, field, data[field])
-    if "category_id" in data:
-        cat = Category.query.get(data["category_id"])
-        if not cat:
-            return jsonify({"error": "分类不存在"}), 400
-        worker.category_id = data["category_id"]
-    if "level" in data:
-        worker.level = int(data["level"])
-    if "hourly_rate" in data:
-        worker.hourly_rate = data["hourly_rate"]
-
-    db.session.commit()
-    return jsonify({"message": "更新成功", "worker": worker.to_dict()}), 200
-
-
-@app.route("/api/admin/workers/<int:worker_id>", methods=["DELETE"])
-def admin_delete_worker(worker_id):
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    worker = Worker.query.get(worker_id)
-    if not worker:
-        return jsonify({"error": "数字员工不存在"}), 404
-
-    # 有关联订单时软删除（下架），否则物理删除
-    has_orders = Order.query.filter_by(worker_id=worker_id).first()
-    if has_orders:
-        worker.status = "offline"
-        worker.name = f"[已删除] {worker.name}" if not worker.name.startswith("[已删除]") else worker.name
-        db.session.commit()
-        return jsonify({"message": "该员工有历史订单，已下架处理"}), 200
-
-    db.session.delete(worker)
-    db.session.commit()
-    return jsonify({"message": "删除成功"}), 200
-
-
-@app.route("/api/admin/orders", methods=["GET"])
-def admin_list_orders():
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
-    per_page = min(per_page, 100)
-    status = request.args.get("status", type=str)
-    keyword = request.args.get("keyword", "", type=str).strip()
-
-    query = Order.query
-    if status:
-        query = query.filter_by(status=status)
-    if keyword:
-        like_kw = f"%{keyword}%"
-        query = query.filter(db.or_(
-            Order.order_no.like(like_kw),
-            Order.remark.like(like_kw),
-        ))
-    query = query.order_by(Order.created_at.desc())
-
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-
-    orders = []
-    for o in pagination.items:
-        d = o.to_dict()
-        d["username"] = o.user.username if o.user else None
-        orders.append(d)
-
-    return jsonify({
-        "orders": orders,
-        "total": pagination.total,
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "pages": pagination.pages,
-    }), 200
-
-
-@app.route("/api/admin/orders/<int:order_id>/status", methods=["PUT"])
-def admin_update_order_status(order_id):
-    admin = require_admin()
-    if not admin:
-        return jsonify({"error": "无管理员权限"}), 403
-
-    order = Order.query.get(order_id)
-    if not order:
-        return jsonify({"error": "订单不存在"}), 404
-
-    data = request.get_json(silent=True) or {}
-    new_status = data.get("status")
-    if new_status not in ORDER_STATUSES:
-        return jsonify({"error": f"无效状态，可选: {', '.join(ORDER_STATUSES)}"}), 400
-
-    allowed = ORDER_TRANSITIONS.get(order.status, [])
-    if new_status not in allowed:
-        return jsonify({
-            "error": f"状态流转不允许: {order.status} → {new_status}，"
-                     f"当前状态仅可转为: {', '.join(allowed) if allowed else '无(终态)'}",
-        }), 400
-
-    now = datetime.datetime.utcnow()
-    order.status = new_status
-    ts_map = {
-        "paid": "paid_at", "active": "activated_at",
-        "completed": "completed_at", "cancelled": "cancelled_at",
-        "refunded": "refunded_at",
-    }
-    if new_status in ts_map:
-        setattr(order, ts_map[new_status], now)
-
-    status_labels = {
-        "paid": "已支付", "active": "服务中", "completed": "已完成",
-        "cancelled": "已取消", "refunded": "已退款",
-    }
-    label = status_labels.get(new_status, new_status)
-    send_message(order.user_id, f"订单状态变更: {label}",
-                 f"订单 {order.order_no} 状态已更新为「{label}」",
-                 "order", order.id)
-    db.session.commit()
-    return jsonify({"message": "状态已更新", "order": order.to_dict()}), 200
-
-
-@app.route("/api/health", methods=["GET"])
-@limiter.exempt
-def health():
-    result = {"status": "ok", "timestamp": datetime.datetime.utcnow().isoformat() + "Z"}
-    # 数据库连通性检查
-    try:
-        db.session.execute(db.text("SELECT 1"))
-        result["database"] = "connected"
-    except Exception as e:
-        result["status"] = "degraded"
-        result["database"] = f"error: {e}"
-    return jsonify(result), 200 if result["status"] == "ok" else 503
-
-
-@app.route("/api/docs", methods=["GET"])
-@limiter.exempt
-def api_docs():
-    """OpenAPI 3.0 规范文档"""
-    spec = {
-        "openapi": "3.0.3",
-        "info": {
-            "title": "虾虾工厂 API",
-            "version": "1.0.0",
-            "description": "数字员工租赁平台 RESTful API",
-        },
-        "servers": [{"url": "/api", "description": "API Server"}],
-        "components": {
-            "securitySchemes": {
-                "BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
-            }
-        },
-        "paths": {
-            "/register": {"post": {"tags": ["用户"], "summary": "用户注册", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["username", "email", "password", "confirm_password"], "properties": {"username": {"type": "string"}, "email": {"type": "string"}, "password": {"type": "string"}, "confirm_password": {"type": "string"}}}}}}, "responses": {"201": {"description": "注册成功"}}}},
-            "/login": {"post": {"tags": ["用户"], "summary": "用户登录", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["login_id", "password"], "properties": {"login_id": {"type": "string"}, "password": {"type": "string"}}}}}}, "responses": {"200": {"description": "登录成功"}}}},
-            "/profile": {"get": {"tags": ["用户"], "summary": "获取个人信息", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/categories": {"get": {"tags": ["分类"], "summary": "分类列表", "responses": {"200": {"description": "成功"}}}},
-            "/workers": {"get": {"tags": ["员工"], "summary": "员工列表", "parameters": [{"name": "page", "in": "query", "schema": {"type": "integer"}}, {"name": "per_page", "in": "query", "schema": {"type": "integer"}}, {"name": "category_id", "in": "query", "schema": {"type": "integer"}}, {"name": "status", "in": "query", "schema": {"type": "string"}}, {"name": "keyword", "in": "query", "schema": {"type": "string"}}, {"name": "sort_by", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "成功"}}}},
-            "/workers/{id}": {"get": {"tags": ["员工"], "summary": "员工详情", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/workers/{id}/reviews": {"get": {"tags": ["评价"], "summary": "员工评价列表", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders": {"post": {"tags": ["订单"], "summary": "创建订单", "security": [{"BearerAuth": []}], "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["worker_id", "duration_hours"], "properties": {"worker_id": {"type": "integer"}, "duration_hours": {"type": "integer"}, "remark": {"type": "string"}}}}}}, "responses": {"201": {"description": "下单成功"}}}, "get": {"tags": ["订单"], "summary": "我的订单列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}": {"get": {"tags": ["订单"], "summary": "订单详情", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/pay": {"post": {"tags": ["支付"], "summary": "模拟支付", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "支付成功"}}}},
-            "/orders/{id}/activate": {"post": {"tags": ["订单"], "summary": "开始服务", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/complete": {"post": {"tags": ["订单"], "summary": "确认完成", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/refund": {"post": {"tags": ["支付"], "summary": "申请退款", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/cancel": {"post": {"tags": ["订单"], "summary": "取消订单", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/orders/{id}/review": {"post": {"tags": ["评价"], "summary": "提交评价", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["rating"], "properties": {"rating": {"type": "integer", "minimum": 1, "maximum": 5}, "content": {"type": "string"}}}}}}, "responses": {"201": {"description": "评价成功"}}}},
-            "/orders/{id}/payments": {"get": {"tags": ["支付"], "summary": "订单支付记录", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/messages": {"get": {"tags": ["消息"], "summary": "消息列表", "security": [{"BearerAuth": []}], "parameters": [{"name": "is_read", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "成功"}}}},
-            "/messages/{id}/read": {"post": {"tags": ["消息"], "summary": "标记已读", "security": [{"BearerAuth": []}], "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/messages/read-all": {"post": {"tags": ["消息"], "summary": "全部已读", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/messages/unread-count": {"get": {"tags": ["消息"], "summary": "未读数", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/favorites": {"get": {"tags": ["收藏"], "summary": "收藏列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/favorites/{worker_id}": {"post": {"tags": ["收藏"], "summary": "收藏员工", "security": [{"BearerAuth": []}], "parameters": [{"name": "worker_id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"201": {"description": "成功"}}}, "delete": {"tags": ["收藏"], "summary": "取消收藏", "security": [{"BearerAuth": []}], "parameters": [{"name": "worker_id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/favorites/{worker_id}/check": {"get": {"tags": ["收藏"], "summary": "检查收藏状态", "security": [{"BearerAuth": []}], "parameters": [{"name": "worker_id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "成功"}}}},
-            "/recommendations": {"get": {"tags": ["推荐"], "summary": "智能推荐员工", "responses": {"200": {"description": "成功"}}}},
-            "/admin/stats": {"get": {"tags": ["管理后台"], "summary": "数据统计", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/admin/users": {"get": {"tags": ["管理后台"], "summary": "用户列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/admin/workers": {"get": {"tags": ["管理后台"], "summary": "员工列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}, "post": {"tags": ["管理后台"], "summary": "新增员工", "security": [{"BearerAuth": []}], "responses": {"201": {"description": "成功"}}}},
-            "/admin/orders": {"get": {"tags": ["管理后台"], "summary": "订单列表", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "成功"}}}},
-            "/health": {"get": {"tags": ["系统"], "summary": "健康检查", "responses": {"200": {"description": "正常"}, "503": {"description": "异常"}}}},
-        }
-    }
-    return jsonify(spec), 200
-
-
+app.register_blueprint(auth_bp)
+app.register_blueprint(catalog_bp)
+app.register_blueprint(orders_bp)
+app.register_blueprint(admin_bp)
+app.register_blueprint(system_bp)
+
+# ===== 向后兼容：让测试可以 import app 后访问模型和工具 =====
+from models import (  # noqa: E402, F401
+    User, Category, Worker, Order, Payment, Review, Message, Favorite,
+    ROLES, ORDER_STATUSES, ORDER_TRANSITIONS,
+)
+from utils.auth import (  # noqa: E402, F401
+    create_token, verify_token, get_current_user, require_admin,
+)
+from utils.helpers import (  # noqa: E402, F401
+    generate_order_no, generate_payment_no, EMAIL_RE, JsonFormatter,
+)
+from services.messages import send_message  # noqa: E402, F401
+
+# ===== 建表 =====
 with app.app_context():
     db.create_all()
     ensure_order_schema()
