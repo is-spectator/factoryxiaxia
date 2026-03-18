@@ -91,6 +91,11 @@
 
                 <!-- 操作按钮 -->
                 <div id="actions" class="flex gap-3"></div>
+
+                <div id="deployment-section" class="card p-6 hidden">
+                    <h3 class="font-bold mb-4 text-sm text-gray-400">机器人部署</h3>
+                    <div id="deployment-content"></div>
+                </div>
             </div>
 
             <!-- 右列：状态时间线 -->
@@ -167,15 +172,21 @@ async function loadOrder() {
     document.getElementById('status-icon').className = `iconify text-4xl ${sc.color}`;
     document.getElementById('status-icon').dataset.icon = sc.icon;
     document.getElementById('status-label').textContent = sc.label;
-    document.getElementById('status-desc').textContent = sc.desc;
+    document.getElementById('status-desc').textContent = (o.order_type === 'agent_deployment' && o.status === 'paid')
+        ? '订单已支付，请继续完成部署配置并发布机器人。'
+        : sc.desc;
 
     // 订单信息
     document.getElementById('worker-avatar').style.background = `linear-gradient(135deg, ${o.worker_gradient_from||'#6A0DAD'}, ${o.worker_gradient_to||'#00D2FF'})`;
     document.getElementById('worker-icon').dataset.icon = o.worker_icon || 'mdi:robot-happy-outline';
     document.getElementById('worker-name').textContent = o.worker_name;
     document.getElementById('order-no').textContent = o.order_no;
-    document.getElementById('duration').textContent = o.duration_hours + ' 小时';
-    document.getElementById('unit-price').textContent = '￥' + (o.total_amount / o.duration_hours).toFixed(2) + '/h';
+    document.getElementById('duration').textContent = o.order_type === 'agent_deployment'
+        ? `${Math.max(1, Math.round((o.duration_hours || 720) / 24))} 天`
+        : o.duration_hours + ' 小时';
+    document.getElementById('unit-price').textContent = o.order_type === 'agent_deployment'
+        ? (o.service_plan_name || '官方套餐')
+        : '￥' + (o.total_amount / o.duration_hours).toFixed(2) + '/h';
     document.getElementById('total-amount').textContent = '￥' + o.total_amount.toFixed(2);
     document.getElementById('remark').textContent = o.remark || '无';
     document.getElementById('created-at').textContent = formatTime(o.created_at);
@@ -185,6 +196,7 @@ async function loadOrder() {
 
     // 操作按钮
     renderActions(o);
+    renderDeploymentSection(o);
 
     // 支付记录
     await loadPayments();
@@ -253,22 +265,73 @@ function renderTimeline(o) {
 function renderActions(o) {
     const container = document.getElementById('actions');
     let html = '';
+    const isAgentDeployment = o.order_type === 'agent_deployment';
 
     if (o.status === 'pending') {
         html += `<a href="pay.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">立即支付</a>`;
         html += `<button onclick="doAction('cancel')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">取消订单</button>`;
+    } else if (o.status === 'paid' && isAgentDeployment) {
+        html += `<a href="deployment-setup.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">进入部署向导</a>`;
+        html += `<button onclick="doAction('refund')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">申请退款</button>`;
     } else if (o.status === 'paid') {
         html += `<button onclick="doAction('activate')" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1">开始服务</button>`;
+        html += `<button onclick="doAction('refund')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">申请退款</button>`;
+    } else if (o.status === 'active' && isAgentDeployment) {
+        html += `<a href="deployment-setup.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">管理机器人</a>`;
         html += `<button onclick="doAction('refund')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">申请退款</button>`;
     } else if (o.status === 'active') {
         html += `<button onclick="doAction('complete')" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1">确认完成</button>`;
         html += `<button onclick="doAction('refund')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">申请退款</button>`;
+    } else if (isAgentDeployment && o.status === 'completed') {
+        html += `<a href="deployment-setup.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">查看部署信息</a>`;
     }
 
     if (html) {
         container.innerHTML = html;
         container.classList.remove('hidden');
+    } else {
+        container.innerHTML = '';
+        container.classList.add('hidden');
     }
+}
+
+function renderDeploymentSection(order) {
+    const section = document.getElementById('deployment-section');
+    const container = document.getElementById('deployment-content');
+    if (order.order_type !== 'agent_deployment') {
+        section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+    const durationDays = Math.max(1, Math.round((order.duration_hours || 720) / 24));
+    const canSetup = ['paid', 'active', 'completed'].includes(order.status);
+    container.innerHTML = `
+        <div class="space-y-4">
+            <div class="grid md:grid-cols-3 gap-3 text-sm">
+                <div class="rounded-2xl bg-white/5 border border-white/10 p-4">
+                    <p class="text-xs text-gray-500 mb-1">已购套餐</p>
+                    <p class="font-bold">${esc(order.service_plan_name || '官方套餐')}</p>
+                </div>
+                <div class="rounded-2xl bg-white/5 border border-white/10 p-4">
+                    <p class="text-xs text-gray-500 mb-1">服务周期</p>
+                    <p class="font-bold">${durationDays} 天</p>
+                </div>
+                <div class="rounded-2xl bg-white/5 border border-white/10 p-4">
+                    <p class="text-xs text-gray-500 mb-1">交付形态</p>
+                    <p class="font-bold">公开 API + 知识库</p>
+                </div>
+            </div>
+            <div class="rounded-2xl bg-cyan-400/5 border border-cyan-400/10 p-4 text-sm text-gray-300 leading-7">
+                ${canSetup
+                    ? '下一步请进入部署向导，创建实例、配置品牌语气、上传知识库并发布机器人。'
+                    : '完成支付后即可进入部署向导，获取公开 API 服务。'}
+            </div>
+            <a href="${canSetup ? `deployment-setup.html?order_id=${order.id}` : `pay.html?order_id=${order.id}`}" class="inline-flex items-center justify-center px-4 py-3 rounded-xl border border-cyan-400/25 text-cyan-300 hover:bg-cyan-400/10 transition text-sm font-medium">
+                <span class="iconify mr-2" data-icon="${canSetup ? 'mdi:rocket-launch-outline' : 'mdi:credit-card-outline'}"></span>${canSetup ? '打开部署向导' : '先去支付'}
+            </a>
+        </div>
+    `;
 }
 
 function renderReviewSection(review) {

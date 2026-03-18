@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>部署向导 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .step-on { border-color: rgba(34,211,238,0.45); background: rgba(34,211,238,0.08); color: #fff; }
+        .step-done { border-color: rgba(74,222,128,0.35); background: rgba(74,222,128,0.10); color: #dcfce7; }
+        .btn-primary { background: linear-gradient(135deg, #22d3ee, #3b82f6); color: #03111f; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 24px rgba(34,211,238,0.3); }
+        .btn-secondary:hover { border-color: rgba(34,211,238,0.35); }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-cyan-400" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="text-white transition" href="deployment-setup.html">部署向导</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+    </div>
+</nav>
+
+<main class="pt-28 pb-20 px-6 max-w-7xl mx-auto">
+    <div id="wizard-content" class="text-center py-24 text-gray-500">加载部署向导中...</div>
+</main>
+
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+const params = new URLSearchParams(window.location.search);
+const orderId = params.get('order_id');
+const deploymentIdParam = params.get('deployment_id');
+const state = {
+    order: null,
+    organizations: [],
+    deployment: null,
+};
+
+function authHeaders(extra) {
+    return Object.assign({ 'Authorization': 'Bearer ' + token }, extra || {});
+}
+
+function toast(msg, ok) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
+function esc(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+}
+
+function isSetupOrder(order) {
+    return !!order && order.order_type === 'agent_deployment';
+}
+
+function canEnterWizard(order) {
+    return !!order && ['paid', 'active', 'completed'].includes(order.status);
+}
+
+function serializeList(value) {
+    return String(value || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function formatDate(iso) {
+    if (!iso) return '--';
+    return new Date(iso).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function getDeploymentConfig() {
+    return (state.deployment && state.deployment.config) || {
+        brand_voice: 'professional',
+        business_name: '',
+        handoff_message: '这个问题我需要转给人工客服继续确认，请稍等。',
+        pii_masking_enabled: true,
+        handoff_on_pii: false,
+        forbidden_topics: [],
+        sensitive_keywords: [],
+        provider: 'rules',
+    };
+}
+
+function buildApiExample(origin, deployment) {
+    const endpoint = `${origin}/api/public/chat/${deployment.public_token}/message`;
+    const payload = '{\n  "message": "你好，我想咨询退款政策",\n  "visitor_name": "官网访客"\n}';
+    return {
+        endpoint,
+        curl: `curl -X POST '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -d '${payload.replace(/\n/g, "\\n").replace(/'/g, "\\'")}'`,
+        fetch: `fetch('${endpoint}', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    message: '你好，我想咨询退款政策',\n    visitor_name: '官网访客'\n  })\n}).then(res => res.json()).then(console.log);`,
+    };
+}
+
+async function fetchJson(url, options) {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.href = 'login.html';
+        throw new Error('unauthorized');
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(data.error || data.message || '请求失败');
+    }
+    return data;
+}
+
+async function loadOrder() {
+    if (!orderId) return null;
+    const data = await fetchJson(`/api/orders/${orderId}`, { headers: authHeaders() });
+    state.order = data.order;
+    return data.order;
+}
+
+async function loadOrganizations() {
+    const data = await fetchJson('/api/organizations', { headers: authHeaders() });
+    state.organizations = data.organizations || [];
+    return state.organizations;
+}
+
+async function loadDeploymentDetail(deploymentId) {
+    const data = await fetchJson(`/api/deployments/${deploymentId}`, { headers: authHeaders() });
+    state.deployment = data.deployment;
+    return data.deployment;
+}
+
+async function loadExistingDeploymentByOrder(order) {
+    if (!order) return null;
+    const data = await fetchJson('/api/deployments', { headers: authHeaders() });
+    const deployment = (data.deployments || []).find(item => String(item.order_id) === String(order.id)) || null;
+    if (!deployment) {
+        state.deployment = null;
+        return null;
+    }
+    return loadDeploymentDetail(deployment.id);
+}
+
+function getStepState(stepIndex) {
+    const deployment = state.deployment;
+    const hasDeployment = !!deployment;
+    const hasKnowledge = hasDeployment && (deployment.knowledge_bases || []).some(kb => (kb.document_count || 0) > 0);
+    const isPublished = hasDeployment && deployment.status === 'active';
+    if (stepIndex === 1) return hasDeployment ? 'done' : 'current';
+    if (stepIndex === 2) return hasDeployment ? 'current' : 'idle';
+    if (stepIndex === 3) return hasKnowledge ? 'done' : (hasDeployment ? 'current' : 'idle');
+    if (stepIndex === 4) return isPublished ? 'done' : (hasKnowledge ? 'current' : 'idle');
+    return 'idle';
+}
+
+function renderStep(label, description, stepIndex) {
+    const stateText = getStepState(stepIndex);
+    const cls = stateText === 'done' ? 'step-done' : (stateText === 'current' ? 'step-on' : 'border-white/10 text-gray-500');
+    const icon = stateText === 'done' ? 'mdi:check' : `mdi:numeric-${stepIndex}-circle-outline`;
+    return `
+        <div class="rounded-2xl border p-4 ${cls}">
+            <div class="flex items-center gap-3 mb-2">
+                <span class="iconify text-xl" data-icon="${icon}"></span>
+                <p class="font-bold">${label}</p>
+            </div>
+            <p class="text-xs leading-6 ${stateText === 'idle' ? 'text-gray-500' : 'text-gray-300'}">${description}</p>
+        </div>
+    `;
+}
+
+function renderOrganizationOptions() {
+    if (!state.organizations.length) {
+        return '<option value="">默认团队（自动创建）</option>';
+    }
+    return ['<option value="">默认团队（自动选择）</option>']
+        .concat(state.organizations.map(org => `<option value="${org.id}">${esc(org.name)}${org.industry ? ' · ' + esc(org.industry) : ''}</option>`))
+        .join('');
+}
+
+function renderKnowledgeBases() {
+    const deployment = state.deployment;
+    if (!deployment || !deployment.knowledge_bases || deployment.knowledge_bases.length === 0) {
+        return '<div class="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-gray-500">还没有知识库文档，发布前至少上传一篇。</div>';
+    }
+    return deployment.knowledge_bases.map(kb => `
+        <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+                <div>
+                    <p class="font-bold">${esc(kb.name)}</p>
+                    <p class="text-xs text-gray-500 mt-1">${esc(kb.description || '暂无描述')}</p>
+                </div>
+                <div class="text-right text-xs text-gray-400">
+                    <p>文档数: ${kb.document_count}</p>
+                    <p>已发布: ${kb.published_document_count}</p>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500">状态: ${esc(kb.status)}${kb.published_at ? ` · 发布时间 ${formatDate(kb.published_at)}` : ''}</p>
+        </div>
+    `).join('');
+}
+
+function renderWizard() {
+    const order = state.order;
+    if (!order) {
+        document.getElementById('wizard-content').innerHTML = '<div class="text-center py-20 text-red-400">缺少订单信息，无法进入部署向导。</div>';
+        return;
+    }
+    if (!isSetupOrder(order)) {
+        document.getElementById('wizard-content').innerHTML = `
+            <div class="card max-w-2xl mx-auto p-8 text-center">
+                <span class="iconify text-6xl text-red-400 mb-4 inline-block" data-icon="mdi:alert-circle-outline"></span>
+                <h1 class="text-2xl font-bold mb-3">当前订单不是可部署机器人</h1>
+                <p class="text-sm text-gray-400 mb-6">部署向导仅适用于官方数字员工订单。</p>
+                <a href="orders.html" class="btn-primary inline-flex items-center px-6 py-3 rounded-2xl font-bold">返回我的订单</a>
+            </div>
+        `;
+        return;
+    }
+    if (!canEnterWizard(order)) {
+        document.getElementById('wizard-content').innerHTML = `
+            <div class="card max-w-2xl mx-auto p-8 text-center">
+                <span class="iconify text-6xl text-yellow-400 mb-4 inline-block" data-icon="mdi:credit-card-outline"></span>
+                <h1 class="text-2xl font-bold mb-3">先完成支付，再开始部署</h1>
+                <p class="text-sm text-gray-400 mb-6">订单 <span class="font-mono">${esc(order.order_no)}</span> 当前状态为 ${esc(order.status)}。</p>
+                <div class="flex gap-3 justify-center">
+                    <a href="pay.html?order_id=${order.id}" class="btn-primary inline-flex items-center px-6 py-3 rounded-2xl font-bold">去支付</a>
+                    <a href="order-detail.html?order_id=${order.id}" class="btn-secondary border border-white/15 inline-flex items-center px-6 py-3 rounded-2xl font-bold transition">查看订单</a>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const deployment = state.deployment;
+    const config = getDeploymentConfig();
+    const durationDays = Math.max(1, Math.round((order.duration_hours || 720) / 24));
+    const apiExample = deployment && deployment.public_token ? buildApiExample(window.location.origin, deployment) : null;
+
+    document.getElementById('wizard-content').innerHTML = `
+        <div class="flex flex-col xl:flex-row xl:items-end justify-between gap-6 mb-8">
+            <div>
+                <p class="inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full bg-cyan-400/10 border border-cyan-400/20 text-cyan-300 uppercase tracking-[0.22em] mb-4">
+                    <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工交付
+                </p>
+                <h1 class="text-4xl font-bold mb-3">部署向导</h1>
+                <p class="text-gray-400 max-w-3xl">把 ${esc(order.worker_name)} 从已支付订单变成可对外提供服务的机器人实例。你会在这里完成部署创建、知识库配置、发布和 API 交付。</p>
+            </div>
+            <div class="flex gap-3">
+                <a href="order-detail.html?order_id=${order.id}" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl text-sm font-bold transition">查看订单</a>
+                <a href="orders.html" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl text-sm font-bold transition">返回订单列表</a>
+            </div>
+        </div>
+
+        <div class="card p-6 mb-8">
+            <div class="grid lg:grid-cols-4 gap-4">
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">数字员工</p>
+                    <p class="font-bold">${esc(order.worker_name)}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">已购套餐</p>
+                    <p class="font-bold">${esc(order.service_plan_name || '官方套餐')}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">服务周期</p>
+                    <p class="font-bold">${durationDays} 天</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">当前部署状态</p>
+                    <p class="font-bold">${deployment ? esc(deployment.status) : '未创建实例'}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+            ${renderStep('创建实例', '选择组织、实例名和渠道，生成部署实例。', 1)}
+            ${renderStep('配置规则', '设置品牌语气、禁答和隐私处理策略。', 2)}
+            ${renderStep('上传知识', '补充 FAQ、流程说明或品牌资料。', 3)}
+            ${renderStep('发布交付', '发布上线并拿到公开 API token。', 4)}
+        </div>
+
+        <div class="grid lg:grid-cols-5 gap-6">
+            <div class="lg:col-span-3 space-y-6">
+                <section class="card p-6">
+                    <div class="flex items-center justify-between gap-4 mb-5">
+                        <div>
+                            <h2 class="text-lg font-bold">1. 创建部署实例</h2>
+                            <p class="text-sm text-gray-400 mt-1">每个订单最多创建一个实例；如果已存在，会直接复用。</p>
+                        </div>
+                        ${deployment ? '<span class="text-xs px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">实例已创建</span>' : ''}
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">选择组织</label>
+                            <select id="organization-id" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400">
+                                ${renderOrganizationOptions()}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">新建组织（可选）</label>
+                            <input id="organization-name" type="text" placeholder="例如：虾虾工厂客服团队" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 mb-5">
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">实例名称</label>
+                            <input id="deployment-name" type="text" value="${esc((deployment && deployment.deployment_name) || `${order.worker_name} 实例`)}" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">接入渠道</label>
+                            <select id="channel-type" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400">
+                                <option value="web_widget" ${(deployment && deployment.channel_type === 'web_widget') || !deployment ? 'selected' : ''}>Web Widget</option>
+                                <option value="official_account" ${deployment && deployment.channel_type === 'official_account' ? 'selected' : ''}>公众号</option>
+                                <option value="api" ${deployment && deployment.channel_type === 'api' ? 'selected' : ''}>纯 API</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button onclick="createDeployment()" id="create-deployment-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition">${deployment ? '更新/复用部署实例' : '创建部署实例'}</button>
+                </section>
+
+                <section class="card p-6">
+                    <div class="flex items-center justify-between gap-4 mb-5">
+                        <div>
+                            <h2 class="text-lg font-bold">2. 配置机器人规则</h2>
+                            <p class="text-sm text-gray-400 mt-1">部署创建后即可保存配置，后续可以重复修改。</p>
+                        </div>
+                        <span class="text-xs px-3 py-1 rounded-full ${deployment ? 'bg-cyan-400/10 border border-cyan-400/20 text-cyan-300' : 'border border-white/10 text-gray-500'}">${deployment ? '可保存' : '先创建实例'}</span>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">企业名称</label>
+                            <input id="business-name" type="text" value="${esc(config.business_name || '')}" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">品牌语气</label>
+                            <select id="brand-voice" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400">
+                                <option value="professional" ${config.brand_voice === 'professional' ? 'selected' : ''}>专业稳重</option>
+                                <option value="friendly" ${config.brand_voice === 'friendly' ? 'selected' : ''}>亲切友好</option>
+                                <option value="growth" ${config.brand_voice === 'growth' ? 'selected' : ''}>增长导向</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">禁答话题（逗号分隔）</label>
+                            <input id="forbidden-topics" type="text" value="${esc((config.forbidden_topics || []).join(', '))}" placeholder="赔付承诺, 医疗建议" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">敏感关键词（逗号分隔）</label>
+                            <input id="sensitive-keywords" type="text" value="${esc((config.sensitive_keywords || []).join(', '))}" placeholder="退款, 隐私, 投诉" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-xs text-gray-500 mb-2 block">转人工提示语</label>
+                        <textarea id="handoff-message" rows="3" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400 resize-none">${esc(config.handoff_message || '')}</textarea>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 mb-5">
+                        <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+                            <input id="pii-masking-enabled" type="checkbox" class="accent-cyan-400" ${config.pii_masking_enabled ? 'checked' : ''}/>
+                            开启 PII 脱敏
+                        </label>
+                        <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+                            <input id="handoff-on-pii" type="checkbox" class="accent-cyan-400" ${config.handoff_on_pii ? 'checked' : ''}/>
+                            命中隐私信息时自动转人工
+                        </label>
+                    </div>
+                    <button onclick="saveConfig()" id="save-config-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">保存配置</button>
+                </section>
+
+                <section class="card p-6">
+                    <div class="flex items-center justify-between gap-4 mb-5">
+                        <div>
+                            <h2 class="text-lg font-bold">3. 上传知识库</h2>
+                            <p class="text-sm text-gray-400 mt-1">至少上传一篇知识文档，发布后机器人才能稳定回答。</p>
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">知识库名称</label>
+                            <input id="kb-name" type="text" value="默认知识库" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">知识库描述</label>
+                            <input id="kb-description" type="text" placeholder="例如：退款政策 / 售后流程 / 品牌说明" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-3 gap-4 mb-4">
+                        <div class="md:col-span-2">
+                            <label class="text-xs text-gray-500 mb-2 block">文档标题</label>
+                            <input id="doc-title" type="text" placeholder="例如：退款政策 FAQ" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 mb-2 block">文档类型</label>
+                            <select id="doc-type" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400">
+                                <option value="faq">FAQ</option>
+                                <option value="policy">Policy</option>
+                                <option value="brand">Brand</option>
+                                <option value="process">Process</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-xs text-gray-500 mb-2 block">来源名称（可选）</label>
+                        <input id="doc-source-name" type="text" placeholder="例如：官网帮助中心 / 售后 SOP" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                    </div>
+                    <div class="mb-5">
+                        <label class="text-xs text-gray-500 mb-2 block">文档内容</label>
+                        <textarea id="doc-content" rows="8" placeholder="粘贴你的 FAQ、流程说明、品牌规范等内容..." class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400 resize-none"></textarea>
+                    </div>
+                    <div class="flex flex-wrap gap-3 mb-6">
+                        <button onclick="uploadKnowledge()" id="upload-knowledge-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">上传知识文档</button>
+                        <button onclick="fillExampleKnowledge()" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition">填入示例内容</button>
+                    </div>
+                    <div class="space-y-3">
+                        ${renderKnowledgeBases()}
+                    </div>
+                </section>
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+                <section class="card p-6 sticky top-28">
+                    <div class="flex items-center justify-between gap-4 mb-5">
+                        <div>
+                            <h2 class="text-lg font-bold">4. 发布与 API 交付</h2>
+                            <p class="text-sm text-gray-400 mt-1">发布后公开 token 和调用示例会在这里显示。</p>
+                        </div>
+                        ${deployment && deployment.status === 'active' ? '<span class="text-xs px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">已发布</span>' : ''}
+                    </div>
+
+                    <div class="rounded-2xl border border-white/10 bg-white/5 p-5 mb-5">
+                        <div class="grid md:grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">部署实例</p>
+                                <p class="font-bold">${deployment ? esc(deployment.deployment_name) : '未创建'}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">部署状态</p>
+                                <p class="font-bold">${deployment ? esc(deployment.status) : '待创建'}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">公开 Token</p>
+                                <p class="font-mono text-xs break-all">${deployment && deployment.public_token ? esc(deployment.public_token) : '发布后展示'}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">到期时间</p>
+                                <p class="font-bold">${deployment ? formatDate(deployment.expires_at) : '--'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3 mb-6">
+                        <button onclick="publishDeployment()" id="publish-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">发布机器人</button>
+                        ${deployment ? `<button onclick="refreshDeployment()" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition">刷新状态</button>` : ''}
+                    </div>
+
+                    ${apiExample ? `
+                        <div class="space-y-5">
+                            <div>
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <p class="text-sm font-bold">公开 API Endpoint</p>
+                                    <button onclick="copyText('${esc(apiExample.endpoint)}')" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
+                                </div>
+                                <div class="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-xs break-all text-cyan-200">${esc(apiExample.endpoint)}</div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <p class="text-sm font-bold">cURL 示例</p>
+                                    <button onclick="copyText(${JSON.stringify(apiExample.curl)})" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
+                                </div>
+                                <pre class="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-xs overflow-x-auto text-gray-200 whitespace-pre-wrap">${esc(apiExample.curl)}</pre>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <p class="text-sm font-bold">前端调用示例</p>
+                                    <button onclick="copyText(${JSON.stringify(apiExample.fetch)})" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
+                                </div>
+                                <pre class="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-xs overflow-x-auto text-gray-200 whitespace-pre-wrap">${esc(apiExample.fetch)}</pre>
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-gray-500 leading-7">
+                            还没有公开 API。请先创建实例、上传至少一篇知识文档，然后点击“发布机器人”。
+                        </div>
+                    `}
+                </section>
+            </div>
+        </div>
+    `;
+}
+
+async function ensureOrganizationSelection() {
+    const newOrgName = (document.getElementById('organization-name') || {}).value?.trim();
+    const selectedOrgId = (document.getElementById('organization-id') || {}).value;
+    if (newOrgName) {
+        const orgData = await fetchJson('/api/organizations', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ name: newOrgName }),
+        });
+        await loadOrganizations();
+        return orgData.organization.id;
+    }
+    return selectedOrgId ? parseInt(selectedOrgId, 10) : null;
+}
+
+function collectConfigPayload() {
+    return {
+        business_name: document.getElementById('business-name').value.trim(),
+        brand_voice: document.getElementById('brand-voice').value,
+        handoff_message: document.getElementById('handoff-message').value.trim(),
+        forbidden_topics: serializeList(document.getElementById('forbidden-topics').value),
+        sensitive_keywords: serializeList(document.getElementById('sensitive-keywords').value),
+        pii_masking_enabled: document.getElementById('pii-masking-enabled').checked,
+        handoff_on_pii: document.getElementById('handoff-on-pii').checked,
+        provider: 'rules',
+    };
+}
+
+async function createDeployment() {
+    if (!state.order) return;
+    const btn = document.getElementById('create-deployment-btn');
+    btn.disabled = true;
+    btn.textContent = '处理中...';
+    try {
+        const organizationId = await ensureOrganizationSelection();
+        const data = await fetchJson(`/api/orders/${state.order.id}/deployments`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                organization_id: organizationId,
+                deployment_name: document.getElementById('deployment-name').value.trim(),
+                channel_type: document.getElementById('channel-type').value,
+                config: collectConfigPayload(),
+            }),
+        });
+        state.deployment = data.deployment;
+        await refreshDeployment();
+        toast(data.message || '部署实例已准备好', true);
+    } catch (error) {
+        toast(error.message || '创建部署失败', false);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = state.deployment ? '更新/复用部署实例' : '创建部署实例';
+    }
+}
+
+async function saveConfig() {
+    if (!state.deployment) return;
+    const btn = document.getElementById('save-config-btn');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+    try {
+        await fetchJson(`/api/deployments/${state.deployment.id}/config`, {
+            method: 'PUT',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(collectConfigPayload()),
+        });
+        await refreshDeployment();
+        toast('部署配置已保存', true);
+    } catch (error) {
+        toast(error.message || '保存配置失败', false);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '保存配置';
+    }
+}
+
+async function uploadKnowledge() {
+    if (!state.deployment) return;
+    const title = document.getElementById('doc-title').value.trim();
+    const content = document.getElementById('doc-content').value.trim();
+    if (!title || !content) {
+        toast('请填写文档标题和内容', false);
+        return;
+    }
+    const btn = document.getElementById('upload-knowledge-btn');
+    btn.disabled = true;
+    btn.textContent = '上传中...';
+    try {
+        await fetchJson(`/api/deployments/${state.deployment.id}/knowledge-base`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                name: document.getElementById('kb-name').value.trim() || '默认知识库',
+                description: document.getElementById('kb-description').value.trim(),
+                title,
+                content,
+                doc_type: document.getElementById('doc-type').value,
+                source_name: document.getElementById('doc-source-name').value.trim(),
+            }),
+        });
+        document.getElementById('doc-title').value = '';
+        document.getElementById('doc-content').value = '';
+        document.getElementById('doc-source-name').value = '';
+        await refreshDeployment();
+        toast('知识文档上传成功', true);
+    } catch (error) {
+        toast(error.message || '上传知识失败', false);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '上传知识文档';
+    }
+}
+
+async function publishDeployment() {
+    if (!state.deployment) return;
+    const btn = document.getElementById('publish-btn');
+    btn.disabled = true;
+    btn.textContent = '发布中...';
+    try {
+        const data = await fetchJson(`/api/deployments/${state.deployment.id}/publish`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        state.deployment = data.deployment;
+        await refreshDeployment();
+        toast('机器人已发布，可开始提供 API 服务', true);
+    } catch (error) {
+        toast(error.message || '发布失败', false);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '发布机器人';
+    }
+}
+
+async function refreshDeployment() {
+    if (!state.deployment) {
+        renderWizard();
+        return;
+    }
+    await loadDeploymentDetail(state.deployment.id);
+    renderWizard();
+}
+
+function fillExampleKnowledge() {
+    const titleEl = document.getElementById('doc-title');
+    const contentEl = document.getElementById('doc-content');
+    const sourceEl = document.getElementById('doc-source-name');
+    if (!titleEl || !contentEl || !sourceEl) return;
+    titleEl.value = '退款政策 FAQ';
+    sourceEl.value = '帮助中心';
+    contentEl.value = [
+        'Q: 退款需要多久？',
+        'A: 常规订单在审核通过后 1-3 个工作日原路退回。',
+        '',
+        'Q: 哪些情况需要转人工？',
+        'A: 涉及大额赔付、争议投诉、身份核验时必须转人工。',
+        '',
+        'Q: 客户如何联系客服？',
+        'A: 可以在对话中留下手机号，系统会记录并转交人工处理。'
+    ].join('\n');
+}
+
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        toast('已复制到剪贴板', true);
+    } catch (error) {
+        toast('复制失败，请手动复制', false);
+    }
+}
+
+async function init() {
+    if (!orderId && !deploymentIdParam) {
+        document.getElementById('wizard-content').innerHTML = '<div class="text-center py-20 text-red-400">缺少订单或部署参数，无法打开部署向导。</div>';
+        return;
+    }
+    try {
+        await loadOrganizations();
+        if (deploymentIdParam) {
+            await loadDeploymentDetail(deploymentIdParam);
+            if (!state.order && state.deployment && state.deployment.order_id) {
+                const data = await fetchJson(`/api/orders/${state.deployment.order_id}`, { headers: authHeaders() });
+                state.order = data.order;
+            }
+        } else {
+            await loadOrder();
+            if (state.order && canEnterWizard(state.order)) {
+                await loadExistingDeploymentByOrder(state.order);
+            }
+        }
+        renderWizard();
+    } catch (error) {
+        if (error.message !== 'unauthorized') {
+            document.getElementById('wizard-content').innerHTML = `<div class="text-center py-20 text-red-400">${esc(error.message || '部署向导加载失败')}</div>`;
+        }
+    }
+}
+
+init();
+</script>
+</body>
+</html>

@@ -20,6 +20,9 @@
         .status-dot-online { background: #22c55e; }
         .status-dot-busy { background: #f97316; }
         .status-dot-offline { background: #6b7280; }
+        .quick-filter-active { background: linear-gradient(135deg, rgba(6,182,212,0.24), rgba(106,13,173,0.28)); border-color: rgba(34,211,238,0.6); color: #fff; }
+        .official-spotlight { background: radial-gradient(circle at top left, rgba(34,211,238,0.18), transparent 45%), linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); }
+        .official-pill { background: rgba(34,211,238,0.12); color: #67e8f9; border: 1px solid rgba(34,211,238,0.24); }
     </style>
 </head>
 <body class="overflow-x-hidden min-h-screen">
@@ -47,7 +50,35 @@
     <!-- 页头 -->
     <div class="text-center mb-12">
         <h1 class="text-4xl font-bold mb-4">数字员工<span class="text-gradient">人才市场</span></h1>
-        <p class="text-gray-400 max-w-2xl mx-auto">浏览 150+ 专业数字员工，按需租赁，即时部署。找到最适合您业务的 AI 工作者。</p>
+        <p class="text-gray-400 max-w-2xl mx-auto">浏览可直接售卖和交付的数字员工。既能按需租赁通用员工，也能购买官方机器人并直接拿到 API 服务。</p>
+    </div>
+
+    <section class="official-spotlight glass-morphism rounded-[2rem] p-8 md:p-10 mb-10">
+        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
+            <div>
+                <p class="official-pill inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.24em] mb-4">
+                    <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工专区
+                </p>
+                <h2 class="text-3xl font-bold mb-3">从选型到交付，一次完成</h2>
+                <p class="text-sm text-gray-300 max-w-2xl leading-7">
+                    官方上架的数字员工支持套餐购买、知识库配置、发布上线和公开 API 调用。
+                    适合直接卖给企业客户，而不是只做内部演示。
+                </p>
+            </div>
+            <button onclick="filterWorkerType('agent_service')" class="bg-cyan-400 hover:bg-cyan-300 text-black px-6 py-3 rounded-2xl font-bold transition inline-flex items-center justify-center">
+                <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>只看官方机器人
+            </button>
+        </div>
+        <div id="official-featured" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div class="rounded-3xl border border-white/10 bg-white/5 p-6 text-gray-500">加载官方机器人中...</div>
+        </div>
+    </section>
+
+    <div class="flex flex-wrap gap-3 justify-center mb-10" id="quick-filters">
+        <button onclick="filterWorkerType(null)" class="quick-filter-btn quick-filter-active px-4 py-2 rounded-full text-sm border border-white/15 transition" data-type="all">全部市场</button>
+        <button onclick="filterWorkerType('agent_service')" class="quick-filter-btn px-4 py-2 rounded-full text-sm border border-white/15 text-gray-300 transition hover:border-cyan-400/50" data-type="agent_service">官方数字员工</button>
+        <button onclick="presetKeyword('客服')" class="px-4 py-2 rounded-full text-sm border border-white/15 text-gray-300 transition hover:border-[#6A0DAD]">搜索客服类</button>
+        <button onclick="presetKeyword('公众号')" class="px-4 py-2 rounded-full text-sm border border-white/15 text-gray-300 transition hover:border-[#6A0DAD]">搜索公众号类</button>
     </div>
 
     <!-- 搜索栏 -->
@@ -66,7 +97,9 @@
 
     <!-- 排序 -->
     <div class="flex justify-between items-center mb-8">
-        <p class="text-sm text-gray-500">共 <span id="total-count">0</span> 位数字员工</p>
+        <p class="text-sm text-gray-500">
+            <span id="result-label">共</span> <span id="total-count">0</span> 位数字员工
+        </p>
         <select id="sort-select" onchange="loadWorkers()" class="bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-cyan-500">
             <option value="total_orders">按人气排序</option>
             <option value="rating">按评分排序</option>
@@ -94,6 +127,18 @@
     let currentPage = 1;
     let currentCategory = null;
     let currentKeyword = '';
+    let currentWorkerType = null;
+
+    const officialCopyMap = {
+        support_responder: {
+            slogan: '把 FAQ、接待和转人工打成一套可售卖的客服 API。',
+            chips: ['公开 API', '知识库问答', '转人工'],
+        },
+        wechat_official_account_manager: {
+            slogan: '为企业交付可落地的公众号自动回复与内容运营机器人。',
+            chips: ['公众号回复', '内容规划', '私域转化'],
+        },
+    };
 
     // 登录状态
     (function() {
@@ -119,6 +164,12 @@
         window.location.reload();
     }
 
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
     // 加载分类
     async function loadCategories() {
         try {
@@ -136,6 +187,59 @@
         } catch(e) { console.error(e); }
     }
 
+    async function loadOfficialAgents() {
+        try {
+            const res = await fetch('/api/workers?worker_type=agent_service&per_page=4&sort_by=total_orders');
+            const data = await res.json();
+            renderOfficialFeatured(data.workers || []);
+        } catch (e) {
+            document.getElementById('official-featured').innerHTML = '<div class="col-span-full rounded-3xl border border-red-400/20 bg-red-500/5 p-6 text-red-300">官方数字员工加载失败，请稍后重试。</div>';
+        }
+    }
+
+    function renderOfficialFeatured(workers) {
+        const container = document.getElementById('official-featured');
+        if (!workers || workers.length === 0) {
+            container.innerHTML = '<div class="col-span-full rounded-3xl border border-white/10 bg-white/5 p-6 text-gray-400">当前还没有官方数字员工。</div>';
+            return;
+        }
+        container.innerHTML = workers.map(w => {
+            const meta = officialCopyMap[w.template_key] || { slogan: '支持下单、部署和公开 API 调用。', chips: ['官方上架', '可部署', '可售卖'] };
+            return `
+                <a href="worker-detail.html?id=${w.id}" class="group rounded-[1.75rem] border border-white/10 bg-black/20 p-6 hover:border-cyan-400/50 transition block">
+                    <div class="flex items-start justify-between gap-4 mb-6">
+                        <div class="flex items-center gap-4">
+                            <div class="w-16 h-16 rounded-3xl flex items-center justify-center shadow-lg" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
+                                <span class="iconify text-3xl" data-icon="${w.avatar_icon}"></span>
+                            </div>
+                            <div>
+                                <p class="official-pill inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full uppercase tracking-[0.2em] mb-2">
+                                    <span class="iconify" data-icon="mdi:check-decagram-outline"></span>官方上架
+                                </p>
+                                <h3 class="text-xl font-bold">${esc(w.name)}</h3>
+                                <p class="text-xs text-gray-400 mt-1">${esc(w.category_name)} · Lv.${esc(w.level)}</p>
+                            </div>
+                        </div>
+                        <span class="text-xs text-cyan-300 border border-cyan-400/20 px-3 py-1 rounded-full">管理式部署</span>
+                    </div>
+                    <p class="text-sm text-gray-300 leading-7 mb-5">${esc(meta.slogan)}</p>
+                    <div class="flex flex-wrap gap-2 mb-6">
+                        ${meta.chips.map(chip => `<span class="text-[11px] px-3 py-1 rounded-full bg-white/5 border border-white/10 text-gray-200">${chip}</span>`).join('')}
+                    </div>
+                    <div class="flex items-end justify-between pt-5 border-t border-white/10">
+                        <div>
+                            <p class="text-xs text-gray-500">官方套餐起</p>
+                            <p class="text-2xl font-bold">￥${Number(w.hourly_rate).toFixed(2)}<span class="text-xs text-gray-500 ml-1">/ 月</span></p>
+                        </div>
+                        <span class="inline-flex items-center gap-2 text-sm font-medium text-cyan-300 group-hover:text-cyan-200">
+                            查看详情<span class="iconify" data-icon="mdi:arrow-right"></span>
+                        </span>
+                    </div>
+                </a>
+            `;
+        }).join('');
+    }
+
     function filterCategory(catId) {
         currentCategory = catId;
         currentPage = 1;
@@ -148,6 +252,29 @@
             target.classList.add('cat-active', 'text-white');
             target.classList.remove('text-gray-400');
         }
+        loadWorkers();
+    }
+
+    function filterWorkerType(workerType) {
+        currentWorkerType = workerType;
+        currentPage = 1;
+        document.querySelectorAll('.quick-filter-btn').forEach(btn => {
+            btn.classList.remove('quick-filter-active');
+            btn.classList.add('text-gray-300');
+        });
+        const target = workerType ? document.querySelector(`.quick-filter-btn[data-type="${workerType}"]`) : document.querySelector('.quick-filter-btn[data-type="all"]');
+        if (target) {
+            target.classList.add('quick-filter-active');
+            target.classList.remove('text-gray-300');
+        }
+        loadWorkers();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function presetKeyword(keyword) {
+        document.getElementById('search-input').value = keyword;
+        currentKeyword = keyword;
+        currentPage = 1;
         loadWorkers();
     }
 
@@ -167,12 +294,14 @@
         let url = `/api/workers?page=${currentPage}&per_page=12&sort_by=${sortBy}`;
         if (currentCategory) url += `&category_id=${currentCategory}`;
         if (currentKeyword) url += `&keyword=${encodeURIComponent(currentKeyword)}`;
+        if (currentWorkerType) url += `&worker_type=${encodeURIComponent(currentWorkerType)}`;
 
         try {
             const res = await fetch(url);
             const data = await res.json();
             renderWorkers(data.workers);
             document.getElementById('total-count').textContent = data.total;
+            document.getElementById('result-label').textContent = currentWorkerType === 'agent_service' ? '官方机器人共' : '共';
             renderPagination(data.page, data.pages);
         } catch(e) {
             document.getElementById('workers-grid').innerHTML = '<div class="col-span-full text-center py-20 text-red-400">加载失败，请刷新重试</div>';
@@ -194,12 +323,21 @@
                         </div>
                         <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#050714] status-dot-${w.status}"></div>
                     </div>
-                    <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. ${w.level}</span>
+                    <div class="flex flex-col items-end gap-2">
+                        ${w.worker_type === 'agent_service' ? '<span class="official-pill text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">官方</span>' : ''}
+                        <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. ${w.level}</span>
+                    </div>
                 </div>
                 <h4 class="text-lg font-bold">${w.name}</h4>
                 <div class="flex items-center text-xs text-gray-400 mt-1 mb-2">
                     <span class="iconify mr-1" data-icon="mdi:tag-outline"></span>${w.category_name}
                 </div>
+                ${w.worker_type === 'agent_service' ? `
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-[11px] px-2.5 py-1 rounded-full bg-cyan-400/10 border border-cyan-400/20 text-cyan-300">可部署 API</span>
+                        <span class="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300">托管交付</span>
+                    </div>
+                ` : ''}
                 <div class="flex flex-wrap gap-1 mb-4">
                     ${w.skills.slice(0, 3).map(s => `<span class="bg-white/5 text-[10px] px-2 py-0.5 rounded text-gray-300">${s}</span>`).join('')}
                     ${w.skills.length > 3 ? `<span class="text-[10px] text-gray-500">+${w.skills.length - 3}</span>` : ''}
@@ -211,11 +349,11 @@
                 </div>
                 <div class="flex justify-between items-center pt-4 border-t border-white/10">
                     <div>
-                        <p class="text-xs text-gray-500">${w.billing_unit}</p>
-                        <p class="font-bold text-lg">￥${w.hourly_rate.toFixed(2)}</p>
+                        <p class="text-xs text-gray-500">${w.worker_type === 'agent_service' ? '官方套餐起' : w.billing_unit}</p>
+                        <p class="font-bold text-lg">￥${Number(w.hourly_rate).toFixed(2)}${w.worker_type === 'agent_service' ? '<span class="text-xs text-gray-500 ml-1">/ 月</span>' : ''}</p>
                     </div>
                     <span class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
-                        <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                        <span class="iconify text-cyan-400 group-hover:text-black" data-icon="${w.worker_type === 'agent_service' ? 'mdi:rocket-launch-outline' : 'mdi:cart-plus'}"></span>
                     </span>
                 </div>
             </a>
@@ -255,6 +393,7 @@
 
     // 初始化
     loadCategories();
+    loadOfficialAgents();
     loadWorkers();
 </script>
 </body>

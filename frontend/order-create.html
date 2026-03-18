@@ -74,8 +74,20 @@
     const params = new URLSearchParams(window.location.search);
     const workerId = params.get('worker_id');
     const defaultHours = parseInt(params.get('hours')) || 24;
+    const servicePlanIdParam = params.get('service_plan_id');
 
     let workerData = null;
+    let selectedPlanId = servicePlanIdParam ? parseInt(servicePlanIdParam, 10) : null;
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function isAgentService(worker) {
+        return !!worker && worker.worker_type === 'agent_service';
+    }
 
     async function init() {
         if (!workerId) {
@@ -95,11 +107,14 @@
 
     function render() {
         const w = workerData;
-        const total = (w.hourly_rate * defaultHours).toFixed(2);
+        if (isAgentService(w) && !selectedPlanId && (w.service_plans || []).length) {
+            selectedPlanId = w.service_plans[0].id;
+        }
+        const total = isAgentService(w) ? getSelectedPlanPrice() : (w.hourly_rate * defaultHours).toFixed(2);
         document.getElementById('order-content').innerHTML = `
             <div class="glass-morphism p-8 rounded-3xl mb-6">
                 <h2 class="text-xl font-bold mb-6 flex items-center">
-                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:robot-happy-outline"></span>租赁员工
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:robot-happy-outline"></span>${isAgentService(w) ? '购买官方数字员工' : '租赁员工'}
                 </h2>
                 <div class="flex items-center gap-4 mb-6">
                     <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
@@ -107,35 +122,75 @@
                     </div>
                     <div>
                         <h3 class="font-bold text-lg">${w.name}</h3>
-                        <p class="text-sm text-gray-400">${w.category_name} · Lv.${w.level}</p>
+                        <p class="text-sm text-gray-400">${w.category_name} · Lv.${w.level}${isAgentService(w) ? ' · 官方上架' : ''}</p>
                     </div>
                     <div class="ml-auto text-right">
-                        <p class="text-xs text-gray-500">${w.billing_unit}</p>
-                        <p class="text-xl font-bold">￥${w.hourly_rate.toFixed(2)}</p>
+                        <p class="text-xs text-gray-500">${isAgentService(w) ? '套餐起' : w.billing_unit}</p>
+                        <p class="text-xl font-bold">￥${Number(w.hourly_rate).toFixed(2)}${isAgentService(w) ? '/月' : ''}</p>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    ${w.skills.map(s => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${s}</span>`).join('')}
+                    ${w.skills.map(s => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${esc(s)}</span>`).join('')}
                 </div>
             </div>
 
             <div class="glass-morphism p-8 rounded-3xl mb-6">
                 <h2 class="text-xl font-bold mb-6 flex items-center">
-                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:timer-outline"></span>租赁配置
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:timer-outline"></span>${isAgentService(w) ? '套餐与交付配置' : '租赁配置'}
                 </h2>
-                <div class="mb-6">
-                    <label class="text-sm text-gray-400 mb-2 block">租赁时长（小时）</label>
-                    <input id="order-hours" type="number" min="1" max="8760" value="${defaultHours}" oninput="recalc()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition text-lg"/>
-                    <div class="flex gap-2 mt-3">
-                        <button onclick="setH(24)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1天</button>
-                        <button onclick="setH(72)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">3天</button>
-                        <button onclick="setH(168)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1周</button>
-                        <button onclick="setH(720)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1月</button>
+                ${isAgentService(w) ? `
+                    <div class="space-y-3 mb-6">
+                        ${(w.service_plans || []).map(plan => `
+                            <button type="button" onclick="selectPlan(${plan.id})" class="plan-option w-full text-left border border-white/10 rounded-2xl p-4 transition hover:border-cyan-400/40" data-plan-id="${plan.id}">
+                                <div class="flex items-start justify-between gap-4 mb-3">
+                                    <div>
+                                        <p class="font-bold">${esc(plan.name)}</p>
+                                        <p class="text-xs text-gray-500 mt-1">${esc(plan.description || '官方托管套餐')}</p>
+                                    </div>
+                                    <p class="text-xl font-bold">￥${Number(plan.price).toFixed(2)}</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2 text-[11px] text-gray-300">
+                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.included_conversations} 对话/月</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.channel_limit} 渠道</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.seat_limit} 席位</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${Math.max(1, Math.round((plan.default_duration_hours || 720) / 24))} 天服务期</span>
+                                </div>
+                            </button>
+                        `).join('')}
                     </div>
-                </div>
+                    <div class="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-gray-400">已选套餐</span>
+                            <span id="selected-plan-name">-</span>
+                        </div>
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-gray-400">服务周期</span>
+                            <span id="selected-plan-duration">-</span>
+                        </div>
+                        <div class="flex justify-between text-sm mb-3">
+                            <span class="text-gray-400">交付资源</span>
+                            <span id="selected-plan-meta">-</span>
+                        </div>
+                        <div class="border-t border-white/10 pt-3">
+                            <p class="text-xs text-gray-500 mb-1">交付说明</p>
+                            <p class="text-sm text-gray-300 leading-6">完成支付后会进入部署向导，继续配置品牌语气、知识库和公开 API。</p>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="mb-6">
+                        <label class="text-sm text-gray-400 mb-2 block">租赁时长（小时）</label>
+                        <input id="order-hours" type="number" min="1" max="8760" value="${defaultHours}" oninput="recalc()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition text-lg"/>
+                        <div class="flex gap-2 mt-3">
+                            <button onclick="setH(24)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1天</button>
+                            <button onclick="setH(72)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">3天</button>
+                            <button onclick="setH(168)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1周</button>
+                            <button onclick="setH(720)" class="text-xs border border-white/10 px-3 py-1 rounded hover:border-[#6A0DAD] transition">1月</button>
+                        </div>
+                    </div>
+                `}
                 <div>
-                    <label class="text-sm text-gray-400 mb-2 block">备注（选填）</label>
-                    <textarea id="order-remark" rows="3" placeholder="描述您的需求，以便数字员工更好地为您服务..." class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition resize-none"></textarea>
+                    <label class="text-sm text-gray-400 mb-2 block">${isAgentService(w) ? '业务说明（选填）' : '备注（选填）'}</label>
+                    <textarea id="order-remark" rows="3" placeholder="${isAgentService(w) ? '例如：官网客服、公众号菜单回复、品牌语气偏专业等...' : '描述您的需求，以便数字员工更好地为您服务...'}" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition resize-none"></textarea>
                 </div>
             </div>
 
@@ -146,12 +201,12 @@
                 </h2>
                 <div class="space-y-3 text-sm">
                     <div class="flex justify-between">
-                        <span class="text-gray-400">员工单价</span>
-                        <span>￥${w.hourly_rate.toFixed(2)} / 小时</span>
+                        <span class="text-gray-400">${isAgentService(w) ? '购买类型' : '员工单价'}</span>
+                        <span id="sum-unit">${isAgentService(w) ? '官方数字员工托管部署' : `￥${Number(w.hourly_rate).toFixed(2)} / 小时`}</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-gray-400">租赁时长</span>
-                        <span id="sum-hours">${defaultHours} 小时</span>
+                        <span class="text-gray-400">${isAgentService(w) ? '服务周期' : '租赁时长'}</span>
+                        <span id="sum-hours">${isAgentService(w) ? '-' : `${defaultHours} 小时`}</span>
                     </div>
                     <div class="border-t border-white/10 my-2"></div>
                     <div class="flex justify-between text-xl font-bold">
@@ -164,17 +219,59 @@
             <div class="flex gap-4">
                 <a href="worker-detail.html?id=${w.id}" class="flex-1 border border-white/20 py-4 rounded-xl font-bold text-center hover:bg-white/5 transition">返回修改</a>
                 <button onclick="submitOrder()" id="submit-btn" class="flex-1 bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold btn-glow transition flex items-center justify-center">
-                    <span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单
+                    <span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>${isAgentService(w) ? '确认购买' : '确认下单'}
                 </button>
             </div>
-            <p class="text-[10px] text-gray-600 text-center mt-4">下单后订单状态为"待支付"，支持随时取消</p>
+            <p class="text-[10px] text-gray-600 text-center mt-4">${isAgentService(w) ? '购买后订单会先进入待支付，支付完成将直接进入部署向导。' : '下单后订单状态为"待支付"，支持随时取消'}</p>
         `;
+        if (isAgentService(w)) {
+            syncPlanSummary();
+        }
     }
 
-    function setH(h) { document.getElementById('order-hours').value = h; recalc(); }
+    function getSelectedPlan() {
+        if (!workerData || !isAgentService(workerData)) return null;
+        const plans = workerData.service_plans || [];
+        return plans.find(plan => String(plan.id) === String(selectedPlanId)) || plans[0] || null;
+    }
+
+    function getSelectedPlanPrice() {
+        const plan = getSelectedPlan();
+        return plan ? Number(plan.price).toFixed(2) : Number(workerData.hourly_rate || 0).toFixed(2);
+    }
+
+    function selectPlan(planId) {
+        selectedPlanId = planId;
+        syncPlanSummary();
+    }
+
+    function syncPlanSummary() {
+        if (!workerData || !isAgentService(workerData)) return;
+        const plan = getSelectedPlan();
+        if (!plan) return;
+
+        document.querySelectorAll('.plan-option').forEach(option => {
+            const active = String(option.dataset.planId) === String(plan.id);
+            option.classList.toggle('border-cyan-400/50', active);
+            option.classList.toggle('bg-cyan-400/5', active);
+        });
+
+        const durationDays = Math.max(1, Math.round((plan.default_duration_hours || 720) / 24));
+        document.getElementById('selected-plan-name').textContent = plan.name;
+        document.getElementById('selected-plan-duration').textContent = `${durationDays} 天`;
+        document.getElementById('selected-plan-meta').textContent = `${plan.channel_limit} 渠道 / ${plan.seat_limit} 席位`;
+        document.getElementById('sum-hours').textContent = `${durationDays} 天`;
+        document.getElementById('sum-total').textContent = `￥${Number(plan.price).toFixed(2)}`;
+    }
+
+    function setH(h) {
+        if (isAgentService(workerData)) return;
+        document.getElementById('order-hours').value = h;
+        recalc();
+    }
 
     function recalc() {
-        if (!workerData) return;
+        if (!workerData || isAgentService(workerData)) return;
         const hours = parseInt(document.getElementById('order-hours').value) || 1;
         const total = (workerData.hourly_rate * hours).toFixed(2);
         document.getElementById('sum-hours').textContent = hours + ' 小时';
@@ -186,8 +283,23 @@
         btn.disabled = true;
         btn.innerHTML = '<span class="iconify mr-2 animate-spin" data-icon="mdi:loading"></span>提交中...';
 
-        const hours = parseInt(document.getElementById('order-hours').value) || 24;
         const remark = document.getElementById('order-remark').value.trim();
+        const payload = {
+            worker_id: parseInt(workerId),
+            remark: remark,
+        };
+        if (isAgentService(workerData)) {
+            const plan = getSelectedPlan();
+            if (!plan) {
+                toast('请选择服务套餐', false);
+                btn.disabled = false;
+                btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认购买';
+                return;
+            }
+            payload.service_plan_id = plan.id;
+        } else {
+            payload.duration_hours = parseInt(document.getElementById('order-hours').value) || 24;
+        }
 
         try {
             const res = await fetch('/api/orders', {
@@ -196,14 +308,14 @@
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + token,
                 },
-                body: JSON.stringify({ worker_id: parseInt(workerId), duration_hours: hours, remark: remark }),
+                body: JSON.stringify(payload),
             });
             if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
             const data = await res.json();
             if (!res.ok) {
                 toast(data.error || '下单失败', false);
                 btn.disabled = false;
-                btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单';
+                btn.innerHTML = `<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>${isAgentService(workerData) ? '确认购买' : '确认下单'}`;
                 return;
             }
             // 成功 - 跳转到支付页面
@@ -211,7 +323,7 @@
         } catch(e) {
             toast('网络错误，请重试', false);
             btn.disabled = false;
-            btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单';
+            btn.innerHTML = `<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>${isAgentService(workerData) ? '确认购买' : '确认下单'}`;
         }
     }
 

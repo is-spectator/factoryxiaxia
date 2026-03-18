@@ -16,6 +16,8 @@
         .card-hover:hover { border-color: #6A0DAD; transform: translateY(-5px); transition: all 0.3s ease; }
         .fav-btn { transition: all 0.2s ease; }
         .fav-btn:hover { transform: scale(1.1); }
+        .official-pill { background: rgba(34,211,238,0.12); color: #67e8f9; border: 1px solid rgba(34,211,238,0.24); }
+        .plan-option-active { border-color: rgba(34,211,238,0.55); background: rgba(34,211,238,0.08); }
     </style>
 </head>
 <body class="overflow-x-hidden min-h-screen">
@@ -119,9 +121,261 @@
     }
 
     const statusMap = { online: { text: '在线', color: 'text-green-400', bg: 'bg-green-500' }, busy: { text: '忙碌', color: 'text-orange-400', bg: 'bg-orange-500' }, offline: { text: '离线', color: 'text-gray-500', bg: 'bg-gray-500' }};
+    const templateLabelMap = {
+        support_responder: 'Support Responder',
+        wechat_official_account_manager: 'WeChat Official Account Manager',
+    };
+    const agentScenarioMap = {
+        support_responder: ['官网客服接待', '售后 FAQ', '复杂问题转人工', '公开 API 问答'],
+        wechat_official_account_manager: ['公众号自动回复', '菜单架构设计', '内容规划', '私域转化策略'],
+    };
+
+    function isAgentService(worker) {
+        return !!worker && worker.worker_type === 'agent_service';
+    }
+
+    function formatMoney(value) {
+        return '￥' + Number(value || 0).toFixed(2);
+    }
+
+    function getTemplateDisplayName(worker) {
+        return (worker.agent_template && worker.agent_template.name) || templateLabelMap[worker.template_key] || '官方数字员工';
+    }
+
+    function renderAgentCapabilityBlocks(worker) {
+        const tools = (worker.agent_template && worker.agent_template.default_tools) || [];
+        const toolNames = {
+            knowledge_base: '知识库',
+            handoff: '转人工',
+            conversation_log: '会话记录',
+            content_calendar: '内容规划',
+        };
+        const scenarios = agentScenarioMap[worker.template_key] || ['企业问答', '品牌接待', '客户运营'];
+        return `
+            <div class="glass-morphism p-8 rounded-3xl">
+                <h3 class="text-lg font-bold mb-6 flex items-center">
+                    <span class="iconify mr-2 text-cyan-300" data-icon="mdi:shield-star-outline"></span>官方交付内容
+                </h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                        <p class="text-xs text-gray-500 mb-1">交付方式</p>
+                        <p class="font-bold">托管部署</p>
+                    </div>
+                    <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                        <p class="text-xs text-gray-500 mb-1">公开能力</p>
+                        <p class="font-bold">API 服务</p>
+                    </div>
+                    <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                        <p class="text-xs text-gray-500 mb-1">默认工具</p>
+                        <p class="font-bold">${tools.map(tool => toolNames[tool] || tool).slice(0, 2).join(' / ') || '知识库'}</p>
+                    </div>
+                    <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                        <p class="text-xs text-gray-500 mb-1">上线节奏</p>
+                        <p class="font-bold">支付后即部署</p>
+                    </div>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="rounded-3xl bg-cyan-400/5 border border-cyan-400/10 p-5">
+                        <p class="text-sm font-bold mb-3">适用场景</p>
+                        <div class="flex flex-wrap gap-2">
+                            ${scenarios.map(item => `<span class="text-xs px-3 py-1 rounded-full bg-black/20 border border-white/10 text-gray-200">${esc(item)}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div class="rounded-3xl bg-white/5 border border-white/10 p-5">
+                        <p class="text-sm font-bold mb-3">交付流程</p>
+                        <div class="space-y-2 text-sm text-gray-300">
+                            <p>1. 选择套餐并完成支付</p>
+                            <p>2. 配置品牌语气与禁答规则</p>
+                            <p>3. 上传知识文档并发布</p>
+                            <p>4. 拿到 <code class="font-mono text-cyan-300">public_token</code> 开始对外提供服务</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderRentalCapabilityBlock(worker) {
+        return `
+            <div class="glass-morphism p-8 rounded-3xl">
+                <h3 class="text-lg font-bold mb-6 flex items-center">
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:chart-radar"></span>能力指标
+                </h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div class="text-center">
+                        <div class="w-16 h-16 mx-auto rounded-2xl bg-blue-500/10 flex items-center justify-center mb-2">
+                            <span class="iconify text-2xl text-blue-400" data-icon="mdi:lightning-bolt"></span>
+                        </div>
+                        <p class="text-sm font-bold">响应速度</p>
+                        <p class="text-xs text-gray-500">< 2 秒</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="w-16 h-16 mx-auto rounded-2xl bg-purple-500/10 flex items-center justify-center mb-2">
+                            <span class="iconify text-2xl text-purple-400" data-icon="mdi:brain"></span>
+                        </div>
+                        <p class="text-sm font-bold">专业度</p>
+                        <p class="text-xs text-gray-500">Lv. ${esc(worker.level)} / 10</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="w-16 h-16 mx-auto rounded-2xl bg-green-500/10 flex items-center justify-center mb-2">
+                            <span class="iconify text-2xl text-green-400" data-icon="mdi:clock-check-outline"></span>
+                        </div>
+                        <p class="text-sm font-bold">可用性</p>
+                        <p class="text-xs text-gray-500">7 × 24 小时</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="w-16 h-16 mx-auto rounded-2xl bg-orange-500/10 flex items-center justify-center mb-2">
+                            <span class="iconify text-2xl text-orange-400" data-icon="mdi:thumb-up-outline"></span>
+                        </div>
+                        <p class="text-sm font-bold">满意度</p>
+                        <p class="text-xs text-gray-500">${(worker.rating / 5 * 100).toFixed(0)}%</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderAgentPurchasePanel(worker, favoriteButtonHtml) {
+        const plans = worker.service_plans || [];
+        if (!selectedPlanId && plans.length > 0) {
+            selectedPlanId = plans[0].id;
+        }
+        return `
+            <div class="glass-morphism p-8 rounded-3xl sticky top-28">
+                <p class="official-pill inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.2em] mb-4">
+                    <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工
+                </p>
+                <h3 class="text-xl font-bold mb-3">购买并部署</h3>
+                <div class="mb-6">
+                    <p class="text-xs text-gray-500 mb-1">官方套餐起</p>
+                    <p class="text-4xl font-bold text-gradient">${formatMoney(worker.hourly_rate)}</p>
+                    <p class="text-xs text-gray-500 mt-2">支付后进入部署向导，发布后即可对外提供 API 服务。</p>
+                </div>
+                <div class="space-y-3 mb-6">
+                    ${(plans || []).map(plan => `
+                        <button type="button" onclick="selectPlan(${plan.id})" class="plan-option w-full text-left rounded-2xl border border-white/10 p-4 transition hover:border-cyan-400/40" data-plan-id="${plan.id}">
+                            <div class="flex items-start justify-between gap-4 mb-3">
+                                <div>
+                                    <p class="font-bold">${esc(plan.name)}</p>
+                                    <p class="text-xs text-gray-500 mt-1">${esc(plan.description || '官方托管套餐')}</p>
+                                </div>
+                                <p class="text-lg font-bold">${formatMoney(plan.price)}</p>
+                            </div>
+                            <div class="flex flex-wrap gap-2 text-[11px] text-gray-300">
+                                <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.included_conversations} 对话/月</span>
+                                <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.channel_limit} 渠道</span>
+                                <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.seat_limit} 席位</span>
+                            </div>
+                        </button>
+                    `).join('')}
+                </div>
+                <div class="bg-white/5 rounded-2xl p-4 mb-6 border border-white/10">
+                    <div class="flex justify-between text-sm mb-2">
+                        <span class="text-gray-400">已选套餐</span>
+                        <span id="agent-selected-name">-</span>
+                    </div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span class="text-gray-400">服务周期</span>
+                        <span id="agent-selected-duration">-</span>
+                    </div>
+                    <div class="flex justify-between text-sm mb-3">
+                        <span class="text-gray-400">交付内容</span>
+                        <span id="agent-selected-meta">-</span>
+                    </div>
+                    <div class="border-t border-white/10 pt-3">
+                        <p class="text-xs text-gray-500 mb-1">套餐说明</p>
+                        <p class="text-sm text-gray-300 leading-6" id="agent-selected-desc">-</p>
+                    </div>
+                </div>
+                <button onclick="goRent()" class="w-full bg-cyan-400 hover:bg-cyan-300 text-black py-4 rounded-xl font-bold text-lg transition flex items-center justify-center">
+                    <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>购买并开始部署
+                </button>
+                ${favoriteButtonHtml}
+                <p class="text-[10px] text-gray-600 text-center mt-3">购买后会自动进入部署向导，可上传知识库并生成 <code class="font-mono text-cyan-300">public_token</code>。</p>
+            </div>
+        `;
+    }
+
+    function renderRentalPurchasePanel(worker, favoriteButtonHtml) {
+        return `
+            <div class="glass-morphism p-8 rounded-3xl sticky top-28">
+                <h3 class="text-lg font-bold mb-6">租赁方案</h3>
+                <div class="mb-6">
+                    <p class="text-xs text-gray-500 mb-1">${esc(worker.billing_unit)}</p>
+                    <p class="text-4xl font-bold text-gradient">${formatMoney(worker.hourly_rate)}</p>
+                </div>
+
+                <div class="mb-6">
+                    <p class="text-sm text-gray-400 mb-3">选择租赁时长</p>
+                    <div class="grid grid-cols-2 gap-2" id="duration-btns">
+                        <button onclick="setDuration(event,24)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 天</button>
+                        <button onclick="setDuration(event,72)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">3 天</button>
+                        <button onclick="setDuration(event,168)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 周</button>
+                        <button onclick="setDuration(event,720)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 月</button>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="text-sm text-gray-400 mb-2 block">自定义时长（小时）</label>
+                    <input id="custom-hours" type="number" min="1" max="8760" value="24" oninput="updatePrice()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition"/>
+                </div>
+
+                <div class="bg-white/5 rounded-xl p-4 mb-6">
+                    <div class="flex justify-between text-sm mb-2">
+                        <span class="text-gray-400">单价</span>
+                        <span>${formatMoney(worker.hourly_rate)} / 小时</span>
+                    </div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span class="text-gray-400">时长</span>
+                        <span id="display-hours">24 小时</span>
+                    </div>
+                    <div class="border-t border-white/10 my-3"></div>
+                    <div class="flex justify-between font-bold text-lg">
+                        <span>合计</span>
+                        <span class="text-gradient" id="display-total">${formatMoney(worker.hourly_rate * 24)}</span>
+                    </div>
+                </div>
+
+                <button onclick="goRent()" class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition flex items-center justify-center">
+                    <span class="iconify mr-2" data-icon="mdi:cart-plus"></span>立即租赁
+                </button>
+                ${favoriteButtonHtml}
+                <p class="text-[10px] text-gray-600 text-center mt-3">支持随时取消未开始的订单</p>
+            </div>
+        `;
+    }
+
+    function syncAgentPlanSelection() {
+        if (!workerData || !isAgentService(workerData)) return;
+        const plans = workerData.service_plans || [];
+        if (!plans.length) return;
+        const selected = plans.find(plan => String(plan.id) === String(selectedPlanId)) || plans[0];
+        selectedPlanId = selected.id;
+
+        document.querySelectorAll('.plan-option').forEach(option => {
+            const active = String(option.dataset.planId) === String(selected.id);
+            option.classList.toggle('plan-option-active', active);
+        });
+
+        const durationDays = Math.max(1, Math.round((selected.default_duration_hours || 720) / 24));
+        const nameEl = document.getElementById('agent-selected-name');
+        const durationEl = document.getElementById('agent-selected-duration');
+        const metaEl = document.getElementById('agent-selected-meta');
+        const descEl = document.getElementById('agent-selected-desc');
+        if (nameEl) nameEl.textContent = selected.name;
+        if (durationEl) durationEl.textContent = `${durationDays} 天服务期`;
+        if (metaEl) metaEl.textContent = `${selected.channel_limit} 渠道 / ${selected.seat_limit} 席位`;
+        if (descEl) descEl.textContent = selected.description || '官方托管套餐';
+    }
+
+    function selectPlan(planId) {
+        selectedPlanId = planId;
+        syncAgentPlanSelection();
+    }
 
     function renderDetail(w) {
         const s = statusMap[w.status] || statusMap.online;
+        const agentMode = isAgentService(w);
         document.title = `${w.name} | 虾虾工厂`;
         const token = getToken();
         const favoriteButtonHtml = token ? `
@@ -130,17 +384,16 @@
                 <span id="fav-text">收藏</span>
             </button>
         ` : '';
+        const sourceRepo = w.agent_template && w.agent_template.source_repo;
+        const sourcePath = w.agent_template && w.agent_template.source_path;
 
         document.getElementById('main-content').innerHTML = `
-            <!-- 返回按钮 -->
             <a href="workers.html" class="inline-flex items-center text-sm text-gray-400 hover:text-white mb-8 transition">
                 <span class="iconify mr-1" data-icon="mdi:arrow-left"></span>返回市场
             </a>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                <!-- 左侧：员工信息 -->
                 <div class="lg:col-span-2 space-y-8">
-                    <!-- 头部卡片 -->
                     <div class="glass-morphism p-8 rounded-3xl">
                         <div class="flex flex-col sm:flex-row items-start gap-6">
                             <div class="relative">
@@ -150,69 +403,53 @@
                                 <div class="absolute -bottom-1 -right-1 w-5 h-5 ${s.bg} rounded-full border-2 border-[#050714]"></div>
                             </div>
                             <div class="flex-1">
-                                <div class="flex items-center gap-3 mb-2">
+                                ${agentMode ? `
+                                    <p class="official-pill inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.2em] mb-4">
+                                        <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工
+                                    </p>
+                                ` : ''}
+                                <div class="flex flex-wrap items-center gap-3 mb-2">
                                     <h1 class="text-3xl font-bold">${esc(w.name)}</h1>
                                     <span class="bg-white/10 text-xs px-3 py-1 rounded-md uppercase tracking-widest">Lv. ${esc(w.level)}</span>
                                     <span class="${s.color} text-sm font-medium flex items-center"><span class="w-2 h-2 ${s.bg} rounded-full mr-1"></span>${s.text}</span>
                                 </div>
-                                <div class="flex items-center gap-4 text-sm text-gray-400 mb-4">
+                                <div class="flex flex-wrap items-center gap-4 text-sm text-gray-400 mb-4">
                                     <span><span class="iconify inline mr-1" data-icon="mdi:tag-outline"></span>${esc(w.category_name)}</span>
                                     <span><span class="iconify inline mr-1" data-icon="mdi:shopping-outline"></span>${esc(w.total_orders)} 次雇佣</span>
                                     <span class="flex items-center">${renderStars(w.rating)}<span class="ml-1">${esc(w.rating)}</span></span>
                                 </div>
-                                <div class="flex flex-wrap gap-2">
+                                <div class="flex flex-wrap gap-2 mb-4">
                                     ${w.skills.map(sk => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${esc(sk)}</span>`).join('')}
                                 </div>
+                                ${agentMode ? `
+                                    <div class="grid md:grid-cols-2 gap-3 text-sm">
+                                        <div class="rounded-2xl bg-cyan-400/5 border border-cyan-400/10 p-4">
+                                            <p class="text-xs text-gray-500 mb-1">官方模板</p>
+                                            <p class="font-bold">${esc(getTemplateDisplayName(w))}</p>
+                                        </div>
+                                        <div class="rounded-2xl bg-white/5 border border-white/10 p-4">
+                                            <p class="text-xs text-gray-500 mb-1">交付方式</p>
+                                            <p class="font-bold">购买后部署 + 公开 API</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-wrap gap-3 mt-4 text-xs text-gray-400">
+                                        ${sourceRepo ? `<a href="${esc(sourceRepo)}" target="_blank" rel="noopener noreferrer" class="hover:text-cyan-300 transition">来源仓库: agency-agents</a>` : ''}
+                                        ${sourcePath ? `<span>模板路径: ${esc(sourcePath)}</span>` : ''}
+                                    </div>
+                                ` : ''}
                             </div>
                         </div>
                     </div>
 
-                    <!-- 详细介绍 -->
                     <div class="glass-morphism p-8 rounded-3xl">
                         <h3 class="text-lg font-bold mb-4 flex items-center">
-                            <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:text-box-outline"></span>详细介绍
+                            <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:text-box-outline"></span>${agentMode ? '产品说明' : '详细介绍'}
                         </h3>
                         <p class="text-gray-300 leading-relaxed">${esc(w.description)}</p>
                     </div>
 
-                    <!-- 能力指标 -->
-                    <div class="glass-morphism p-8 rounded-3xl">
-                        <h3 class="text-lg font-bold mb-6 flex items-center">
-                            <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:chart-radar"></span>能力指标
-                        </h3>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            <div class="text-center">
-                                <div class="w-16 h-16 mx-auto rounded-2xl bg-blue-500/10 flex items-center justify-center mb-2">
-                                    <span class="iconify text-2xl text-blue-400" data-icon="mdi:lightning-bolt"></span>
-                                </div>
-                                <p class="text-sm font-bold">响应速度</p>
-                                <p class="text-xs text-gray-500">< 2 秒</p>
-                            </div>
-                            <div class="text-center">
-                                <div class="w-16 h-16 mx-auto rounded-2xl bg-purple-500/10 flex items-center justify-center mb-2">
-                                    <span class="iconify text-2xl text-purple-400" data-icon="mdi:brain"></span>
-                                </div>
-                                <p class="text-sm font-bold">专业度</p>
-                                <p class="text-xs text-gray-500">Lv. ${esc(w.level)} / 10</p>
-                            </div>
-                            <div class="text-center">
-                                <div class="w-16 h-16 mx-auto rounded-2xl bg-green-500/10 flex items-center justify-center mb-2">
-                                    <span class="iconify text-2xl text-green-400" data-icon="mdi:clock-check-outline"></span>
-                                </div>
-                                <p class="text-sm font-bold">可用性</p>
-                                <p class="text-xs text-gray-500">7 × 24 小时</p>
-                            </div>
-                            <div class="text-center">
-                                <div class="w-16 h-16 mx-auto rounded-2xl bg-orange-500/10 flex items-center justify-center mb-2">
-                                    <span class="iconify text-2xl text-orange-400" data-icon="mdi:thumb-up-outline"></span>
-                                </div>
-                                <p class="text-sm font-bold">满意度</p>
-                                <p class="text-xs text-gray-500">${(w.rating / 5 * 100).toFixed(0)}%</p>
-                            </div>
-                        </div>
-                    </div>
+                    ${agentMode ? renderAgentCapabilityBlocks(w) : renderRentalCapabilityBlock(w)}
 
-                    <!-- 用户评价 -->
                     <div class="glass-morphism p-8 rounded-3xl">
                         <h3 class="text-lg font-bold mb-6 flex items-center">
                             <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:comment-text-multiple-outline"></span>用户评价
@@ -223,7 +460,6 @@
                         <div id="reviews-pagination" class="mt-6"></div>
                     </div>
 
-                    <!-- 相关推荐 -->
                     <div>
                         <h3 class="text-lg font-bold mb-6 flex items-center">
                             <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:account-group-outline"></span>相关推荐
@@ -234,60 +470,15 @@
                     </div>
                 </div>
 
-                <!-- 右侧：租赁面板 -->
                 <div class="space-y-6">
-                    <div class="glass-morphism p-8 rounded-3xl sticky top-28">
-                        <h3 class="text-lg font-bold mb-6">租赁方案</h3>
-                        <div class="mb-6">
-                            <p class="text-xs text-gray-500 mb-1">${esc(w.billing_unit)}</p>
-                            <p class="text-4xl font-bold text-gradient">￥${w.hourly_rate.toFixed(2)}</p>
-                        </div>
-
-                        <!-- 快捷时长 -->
-                        <div class="mb-6">
-                            <p class="text-sm text-gray-400 mb-3">选择租赁时长</p>
-                            <div class="grid grid-cols-2 gap-2" id="duration-btns">
-                                <button onclick="setDuration(event,24)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 天</button>
-                                <button onclick="setDuration(event,72)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">3 天</button>
-                                <button onclick="setDuration(event,168)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 周</button>
-                                <button onclick="setDuration(event,720)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 月</button>
-                            </div>
-                        </div>
-
-                        <!-- 自定义时长 -->
-                        <div class="mb-6">
-                            <label class="text-sm text-gray-400 mb-2 block">自定义时长（小时）</label>
-                            <input id="custom-hours" type="number" min="1" max="8760" value="24" oninput="updatePrice()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition"/>
-                        </div>
-
-                        <!-- 预计费用 -->
-                        <div class="bg-white/5 rounded-xl p-4 mb-6">
-                            <div class="flex justify-between text-sm mb-2">
-                                <span class="text-gray-400">单价</span>
-                                <span>￥${w.hourly_rate.toFixed(2)} / 小时</span>
-                            </div>
-                            <div class="flex justify-between text-sm mb-2">
-                                <span class="text-gray-400">时长</span>
-                                <span id="display-hours">24 小时</span>
-                            </div>
-                            <div class="border-t border-white/10 my-3"></div>
-                            <div class="flex justify-between font-bold text-lg">
-                                <span>合计</span>
-                                <span class="text-gradient" id="display-total">￥${(w.hourly_rate * 24).toFixed(2)}</span>
-                            </div>
-                        </div>
-
-                        <button onclick="goRent()" class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition flex items-center justify-center">
-                            <span class="iconify mr-2" data-icon="mdi:cart-plus"></span>立即租赁
-                        </button>
-                        ${favoriteButtonHtml}
-                        <p class="text-[10px] text-gray-600 text-center mt-3">支持随时取消未开始的订单</p>
-                    </div>
+                    ${agentMode ? renderAgentPurchasePanel(w, favoriteButtonHtml) : renderRentalPurchasePanel(w, favoriteButtonHtml)}
                 </div>
             </div>
         `;
 
-        // After rendering, load reviews, favorite status, and recommendations
+        if (agentMode) {
+            syncAgentPlanSelection();
+        }
         loadReviews(1);
         loadRecommendations();
         if (token) {
@@ -298,6 +489,7 @@
     let workerData = null;
     let isFavorited = false;
     let currentReviewPage = 1;
+    let selectedPlanId = null;
 
     async function init() {
         if (!workerId) {
@@ -517,6 +709,7 @@
 
     // ==================== Rental ====================
     function setDuration(e, hours) {
+        if (isAgentService(workerData)) return;
         document.getElementById('custom-hours').value = hours;
         document.querySelectorAll('.dur-btn').forEach(b => { b.classList.remove('border-[#6A0DAD]', 'bg-[#6A0DAD]/10'); b.classList.add('border-white/10'); });
         e.target.classList.add('border-[#6A0DAD]', 'bg-[#6A0DAD]/10');
@@ -525,7 +718,7 @@
     }
 
     function updatePrice() {
-        if (!workerData) return;
+        if (!workerData || isAgentService(workerData)) return;
         const hours = parseInt(document.getElementById('custom-hours').value) || 1;
         const total = (workerData.hourly_rate * hours).toFixed(2);
         document.getElementById('display-hours').textContent = hours + ' 小时';
@@ -535,6 +728,13 @@
     function goRent() {
         const token = localStorage.getItem('xiaxia_token');
         if (!token) { window.location.href = 'login.html'; return; }
+        if (isAgentService(workerData)) {
+            const plans = workerData.service_plans || [];
+            const selected = plans.find(plan => String(plan.id) === String(selectedPlanId)) || plans[0];
+            if (!selected) return;
+            window.location.href = `order-create.html?worker_id=${workerId}&service_plan_id=${selected.id}`;
+            return;
+        }
         const hours = parseInt(document.getElementById('custom-hours').value) || 24;
         window.location.href = `order-create.html?worker_id=${workerId}&hours=${hours}`;
     }
