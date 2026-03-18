@@ -338,6 +338,19 @@ VALUES (
 )
 ON DUPLICATE KEY UPDATE name=VALUES(name), source_repo=VALUES(source_repo), source_path=VALUES(source_path);
 
+INSERT INTO agent_templates (`key`, name, source_repo, source_path, prompt_template, default_tools, risk_level, is_active)
+VALUES (
+    'wechat_official_account_manager',
+    'WeChat Official Account Manager',
+    'https://github.com/msitarzewski/agency-agents',
+    'marketing/marketing-wechat-official-account.md',
+    '你是企业专属微信公众号数字运营员工，负责根据品牌资料输出内容选题、自动回复策略、菜单架构建议与用户转化话术。回答必须贴合微信生态和私域运营场景，遇到高风险承诺、投放违规或知识不足时必须谨慎并建议人工确认。',
+    '["knowledge_base","conversation_log","content_calendar"]',
+    'medium',
+    TRUE
+)
+ON DUPLICATE KEY UPDATE name=VALUES(name), source_repo=VALUES(source_repo), source_path=VALUES(source_path);
+
 -- ===== 种子数据：分类 =====
 INSERT INTO categories (name, icon, description, sort_order) VALUES
 ('开发工程', 'mdi:code-braces', '全栈开发、后端架构、移动端、DevOps', 1),
@@ -363,6 +376,7 @@ INSERT INTO workers (name, category_id, avatar_icon, avatar_gradient_from, avata
 ('短视频剪辑手', 5, 'mdi:movie-edit', '#ef4444', '#ec4899', 6, '爆款节奏,字幕生成,转场特效,多平台适配', '精通抖音/快手/B站等平台的爆款视频节奏。一键生成字幕、添加转场特效，支持竖屏/横屏多尺寸输出，日产量50+条。', 0.95, '时薪', 'online', 'general', 'manual_service', NULL, 4.5, 4320),
 ('法律文书合规官', 6, 'mdi:gavel', '#10b981', '#059669', 8, '合同审核,侵权检索,GDPR合规,知识产权', '基于最新法律数据库的智能合规审查，支持合同条款风险识别、知识产权侵权检索和GDPR合规检查。审核效率是人类律师的50倍。', 4.50, '时薪', 'online', 'general', 'manual_service', NULL, 4.8, 1120),
 ('SEO 增长黑客', 7, 'mdi:search-web', '#8b5cf6', '#d946ef', 5, '关键词策略,文章生成,外链建设,数据追踪', '全链路SEO优化方案，从关键词调研到内容生产到排名追踪一站式服务。支持Google/百度/Bing多搜索引擎优化。', 0.12, '按件计费', 'online', 'general', 'manual_service', NULL, 4.4, 6780),
+('公众号运营官 #18', 7, 'mdi:wechat', '#10b981', '#22c55e', 7, '微信公众号,自动回复,菜单架构,内容规划,粉丝转化', '专注微信公众号内容运营、自动回复策略、菜单架构和粉丝转化，适合品牌私域与内容增长场景。', 399.00, '月租', 'online', 'agent_service', 'managed_deployment', 'wechat_official_account_manager', 4.8, 860),
 ('游戏数值策划师', 8, 'mdi:controller', '#0ea5e9', '#6366f1', 9, '概率模型,经济系统平衡,数值仿真,玩家行为分析', '精通游戏经济系统设计和数值平衡调优。基于蒙特卡洛模拟和玩家行为数据，确保游戏内经济不崩溃、数值不膨胀。', 3.20, '时薪', 'online', 'general', 'manual_service', NULL, 4.7, 432)
 ON DUPLICATE KEY UPDATE name=name;
 
@@ -379,4 +393,19 @@ ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), pric
 INSERT INTO service_plans (worker_id, slug, name, description, billing_cycle, price, currency, included_conversations, max_handoffs, channel_limit, seat_limit, default_duration_hours, is_active)
 SELECT id, 'enterprise', 'Enterprise', '适合多渠道与深度协同场景', 'monthly', 1499.00, 'CNY', 10000, 1000, 10, 10, 720, TRUE
 FROM workers WHERE name = '多语言客服 #12'
+ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), price=VALUES(price);
+
+INSERT INTO service_plans (worker_id, slug, name, description, billing_cycle, price, currency, included_conversations, max_handoffs, channel_limit, seat_limit, default_duration_hours, is_active)
+SELECT id, 'starter', 'Starter', '适合单账号运营与基础自动回复', 'monthly', 399.00, 'CNY', 800, 30, 1, 1, 720, TRUE
+FROM workers WHERE name = '公众号运营官 #18'
+ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), price=VALUES(price);
+
+INSERT INTO service_plans (worker_id, slug, name, description, billing_cycle, price, currency, included_conversations, max_handoffs, channel_limit, seat_limit, default_duration_hours, is_active)
+SELECT id, 'pro', 'Pro', '适合内容团队协同与粉丝增长', 'monthly', 899.00, 'CNY', 3000, 100, 2, 3, 720, TRUE
+FROM workers WHERE name = '公众号运营官 #18'
+ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), price=VALUES(price);
+
+INSERT INTO service_plans (worker_id, slug, name, description, billing_cycle, price, currency, included_conversations, max_handoffs, channel_limit, seat_limit, default_duration_hours, is_active)
+SELECT id, 'enterprise', 'Enterprise', '适合多矩阵账号与复杂私域运营', 'monthly', 1999.00, 'CNY', 12000, 300, 5, 8, 720, TRUE
+FROM workers WHERE name = '公众号运营官 #18'
 ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), price=VALUES(price);

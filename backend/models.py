@@ -189,6 +189,7 @@ class Worker(db.Model):
             "status": self.status,
             "worker_type": self.worker_type or "general",
             "delivery_mode": self.delivery_mode or "manual_service",
+            "template_key": self.template_key,
             "rating": float(self.rating) if self.rating else 5.0,
             "total_orders": self.total_orders,
         }

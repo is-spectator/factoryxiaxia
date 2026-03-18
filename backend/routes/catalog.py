@@ -22,6 +22,7 @@ def get_workers():
     category_id = request.args.get("category_id", type=int)
     status = request.args.get("status", type=str)
     keyword = request.args.get("keyword", "", type=str).strip()
+    worker_type = request.args.get("worker_type", type=str)
     sort_by = request.args.get("sort_by", "total_orders", type=str)
 
     query = Worker.query
@@ -30,6 +31,8 @@ def get_workers():
         query = query.filter(Worker.category_id == category_id)
     if status:
         query = query.filter(Worker.status == status)
+    if worker_type:
+        query = query.filter(Worker.worker_type == worker_type)
     if keyword:
         like_kw = f"%{keyword}%"
         query = query.filter(

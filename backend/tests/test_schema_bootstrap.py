@@ -45,3 +45,11 @@ def test_bootstrap_contains_agent_tables():
     assert "CREATE TABLE IF NOT EXISTS handoff_tickets (" in content
     assert "CREATE TABLE IF NOT EXISTS usage_records (" in content
     assert "CREATE TABLE IF NOT EXISTS audit_logs (" in content
+
+
+def test_bootstrap_contains_official_agent_templates():
+    sql = Path(__file__).resolve().parents[1] / "init.sql"
+    content = sql.read_text(encoding="utf-8")
+
+    assert "support/support-support-responder.md" in content
+    assert "marketing/marketing-wechat-official-account.md" in content

@@ -151,6 +151,7 @@ def admin_list_workers():
     keyword = request.args.get("keyword", "", type=str).strip()
     category_id = request.args.get("category_id", type=int)
     status = request.args.get("status", type=str)
+    worker_type = request.args.get("worker_type", type=str)
 
     query = Worker.query
     if keyword:
@@ -160,6 +161,8 @@ def admin_list_workers():
         query = query.filter_by(category_id=category_id)
     if status:
         query = query.filter_by(status=status)
+    if worker_type:
+        query = query.filter_by(worker_type=worker_type)
     query = query.order_by(Worker.id.desc())
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)

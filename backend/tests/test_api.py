@@ -127,6 +127,42 @@ def create_agent_deployment(client, app_module, db, publish=False, knowledge_con
     return token, deployment_id, worker, plan
 
 
+def bootstrap_official_agents(app_module, db):
+    with app_module.app.app_context():
+        app_module.bootstrap_agent_foundation()
+        db.session.commit()
+
+
+def buy_publish_and_get_token(client, token, worker_id, service_plan_id, knowledge_content, channel_type="web_widget"):
+    order_res = client.post("/api/orders", headers=auth(token), json={
+        "worker_id": worker_id,
+        "service_plan_id": service_plan_id,
+    })
+    order_id = json.loads(order_res.data)["order"]["id"]
+    client.post(f"/api/orders/{order_id}/pay", headers=auth(token))
+
+    deploy_res = client.post(f"/api/orders/{order_id}/deployments", headers=auth(token), json={
+        "deployment_name": "官方数字员工实例",
+        "channel_type": channel_type,
+    })
+    deployment_id = json.loads(deploy_res.data)["deployment"]["id"]
+
+    client.post(f"/api/deployments/{deployment_id}/knowledge-base", headers=auth(token), json={
+        "name": "官方知识库",
+        "documents": [{
+            "title": "官方知识文档",
+            "content": knowledge_content,
+            "doc_type": "faq",
+            "source_name": "official.md",
+        }],
+    })
+    client.post(f"/api/deployments/{deployment_id}/publish", headers=auth(token))
+
+    detail_res = client.get(f"/api/deployments/{deployment_id}", headers=auth(token))
+    public_token = json.loads(detail_res.data)["deployment"]["public_token"]
+    return deployment_id, public_token
+
+
 # ==================== Auth ====================
 
 class TestAuth:
@@ -741,6 +777,70 @@ class TestChat:
         assert "超出了当前机器人可直接处理的范围" in chat_data["assistant_message"]["content"]
         assert chat_data["session"]["needs_handoff"] is True
         assert chat_data["handoff_ticket"] is not None
+
+
+class TestOfficialAgentFlows:
+    def test_support_responder_official_flow_from_search_to_public_api(self, client, app_module, db):
+        bootstrap_official_agents(app_module, db)
+        search_res = client.get("/api/workers?worker_type=agent_service&keyword=客服")
+        assert search_res.status_code == 200
+        workers = json.loads(search_res.data)["workers"]
+        worker = next(item for item in workers if item["template_key"] == "support_responder")
+
+        detail_res = client.get(f"/api/workers/{worker['id']}")
+        assert detail_res.status_code == 200
+        detail = json.loads(detail_res.data)["worker"]
+        starter_plan = next(plan for plan in detail["service_plans"] if plan["slug"] == "starter")
+
+        register(client, "official1", "official1@t.com")
+        token = login(client, "official1")
+        _, public_token = buy_publish_and_get_token(
+            client,
+            token,
+            detail["id"],
+            starter_plan["id"],
+            "我们支持 7x24 在线答复，复杂问题会转人工继续处理。",
+            channel_type="web_widget",
+        )
+
+        api_res = client.post(f"/api/public/chat/{public_token}/message", json={
+            "message": "你们支持7x24在线吗？",
+            "visitor_name": "流程验证用户",
+        })
+        assert api_res.status_code == 200
+        api_data = json.loads(api_res.data)
+        assert "7x24" in api_data["assistant_message"]["content"]
+
+    def test_wechat_official_account_manager_official_flow_from_search_to_public_api(self, client, app_module, db):
+        bootstrap_official_agents(app_module, db)
+        search_res = client.get("/api/workers?worker_type=agent_service&keyword=公众号")
+        assert search_res.status_code == 200
+        workers = json.loads(search_res.data)["workers"]
+        worker = next(item for item in workers if item["template_key"] == "wechat_official_account_manager")
+
+        detail_res = client.get(f"/api/workers/{worker['id']}")
+        assert detail_res.status_code == 200
+        detail = json.loads(detail_res.data)["worker"]
+        starter_plan = next(plan for plan in detail["service_plans"] if plan["slug"] == "starter")
+
+        register(client, "official2", "official2@t.com")
+        token = login(client, "official2")
+        _, public_token = buy_publish_and_get_token(
+            client,
+            token,
+            detail["id"],
+            starter_plan["id"],
+            "提升公众号粉丝活跃度可以通过自动回复、菜单架构和连续内容运营来实现。",
+            channel_type="wechat_oa",
+        )
+
+        api_res = client.post(f"/api/public/chat/{public_token}/message", json={
+            "message": "怎么提升公众号粉丝活跃度？",
+            "visitor_name": "微信生态客户",
+        })
+        assert api_res.status_code == 200
+        api_data = json.loads(api_res.data)
+        assert "粉丝活跃度" in api_data["assistant_message"]["content"]
 
 
 # ==================== Security / Infra ====================
