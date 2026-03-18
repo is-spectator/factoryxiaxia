@@ -43,6 +43,90 @@ def seed_worker(app_module, db):
     return cat, w
 
 
+def seed_agent_worker(app_module, db):
+    cat = app_module.Category(name="AgentCat", icon="mdi:headphones", sort_order=2)
+    db.session.add(cat)
+    db.session.flush()
+
+    template = app_module.AgentTemplate(
+        key="support_responder_test",
+        name="Support Responder Test",
+        source_repo="https://example.com/repo",
+        source_path="support/support-support-responder.md",
+        prompt_template="客服机器人模板",
+        default_tools='["knowledge_base"]',
+        risk_level="medium",
+        is_active=True,
+    )
+    db.session.add(template)
+    db.session.flush()
+
+    worker = app_module.Worker(
+        name="客服机器人测试版",
+        category_id=cat.id,
+        hourly_rate=299.0,
+        billing_unit="月租",
+        status="online",
+        worker_type="agent_service",
+        delivery_mode="managed_deployment",
+        template_key=template.key,
+    )
+    db.session.add(worker)
+    db.session.flush()
+
+    plan = app_module.ServicePlan(
+        worker_id=worker.id,
+        slug="starter",
+        name="Starter",
+        description="测试套餐",
+        billing_cycle="monthly",
+        price=299.0,
+        included_conversations=500,
+        max_handoffs=50,
+        channel_limit=1,
+        seat_limit=1,
+        default_duration_hours=720,
+        is_active=True,
+    )
+    db.session.add(plan)
+    db.session.commit()
+    return cat, template, worker, plan
+
+
+def create_agent_deployment(client, app_module, db, publish=False, knowledge_content=None):
+    register(client)
+    token = login(client)
+    _, _, worker, plan = seed_agent_worker(app_module, db)
+
+    order_res = client.post("/api/orders", headers=auth(token), json={
+        "worker_id": worker.id,
+        "service_plan_id": plan.id,
+    })
+    order_id = json.loads(order_res.data)["order"]["id"]
+    client.post(f"/api/orders/{order_id}/pay", headers=auth(token))
+
+    deployment_res = client.post(f"/api/orders/{order_id}/deployments", headers=auth(token), json={
+        "deployment_name": "官网客服机器人",
+        "channel_type": "web_widget",
+        "config": {"brand_voice": "professional"},
+    })
+    deployment_id = json.loads(deployment_res.data)["deployment"]["id"]
+
+    if publish:
+        client.post(f"/api/deployments/{deployment_id}/knowledge-base", headers=auth(token), json={
+            "name": "默认知识库",
+            "documents": [{
+                "title": "客服机器人 FAQ",
+                "content": knowledge_content or "我们支持 7x24 在线答复，复杂问题会转人工客服继续处理。",
+                "doc_type": "faq",
+                "source_name": "faq.md",
+            }],
+        })
+        client.post(f"/api/deployments/{deployment_id}/publish", headers=auth(token))
+
+    return token, deployment_id, worker, plan
+
+
 # ==================== Auth ====================
 
 class TestAuth:
@@ -129,6 +213,17 @@ class TestCatalog:
         data = json.loads(r.data)
         assert data["total"] >= 1
 
+    def test_agent_worker_detail_includes_template_and_service_plans(self, client, app_module, db):
+        _, template, worker, plan = seed_agent_worker(app_module, db)
+        r = client.get(f"/api/workers/{worker.id}")
+        assert r.status_code == 200
+        data = json.loads(r.data)["worker"]
+        assert data["worker_type"] == "agent_service"
+        assert data["template_key"] == template.key
+        assert data["agent_template"]["key"] == template.key
+        assert len(data["service_plans"]) == 1
+        assert data["service_plans"][0]["slug"] == plan.slug
+
 
 # ==================== Orders ====================
 
@@ -185,6 +280,29 @@ class TestOrders:
         oid = json.loads(cr.data)["order"]["id"]
         client.post(f"/api/orders/{oid}/cancel", headers=auth(token))
         r = client.post(f"/api/orders/{oid}/cancel", headers=auth(token))
+        assert r.status_code == 400
+
+    def test_create_agent_order_by_service_plan(self, client, app_module, db):
+        register(client)
+        token = login(client)
+        _, _, worker, plan = seed_agent_worker(app_module, db)
+        r = client.post("/api/orders", headers=auth(token), json={
+            "worker_id": worker.id,
+            "service_plan_id": plan.id,
+            "remark": "官网客服部署",
+        })
+        assert r.status_code == 201
+        data = json.loads(r.data)["order"]
+        assert data["order_type"] == "agent_deployment"
+        assert data["service_plan_id"] == plan.id
+        assert data["total_amount"] == 299.0
+        assert data["duration_hours"] == 720
+
+    def test_create_agent_order_requires_service_plan(self, client, app_module, db):
+        register(client)
+        token = login(client)
+        _, _, worker, _ = seed_agent_worker(app_module, db)
+        r = client.post("/api/orders", headers=auth(token), json={"worker_id": worker.id})
         assert r.status_code == 400
 
 
@@ -392,6 +510,141 @@ class TestAdmin:
         assert r.status_code == 200
         assert "下架" in json.loads(r.data)["message"]
 
+    def test_admin_list_service_plans(self, client, app_module, db):
+        make_admin(app_module, db)
+        token = login(client, "admin1")
+        _, _, _, plan = seed_agent_worker(app_module, db)
+        r = client.get("/api/admin/service-plans", headers=auth(token))
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert any(p["id"] == plan.id for p in data["service_plans"])
+
+
+class TestDeployments:
+    def test_create_deployment_from_paid_order(self, client, app_module, db):
+        register(client)
+        token = login(client)
+        _, _, worker, plan = seed_agent_worker(app_module, db)
+        order_res = client.post("/api/orders", headers=auth(token), json={
+            "worker_id": worker.id,
+            "service_plan_id": plan.id,
+        })
+        order_id = json.loads(order_res.data)["order"]["id"]
+        client.post(f"/api/orders/{order_id}/pay", headers=auth(token))
+
+        r = client.post(f"/api/orders/{order_id}/deployments", headers=auth(token), json={
+            "deployment_name": "官网客服机器人",
+            "channel_type": "web_widget",
+            "config": {"brand_voice": "professional"},
+        })
+        assert r.status_code == 201
+        data = json.loads(r.data)["deployment"]
+        assert data["deployment_name"] == "官网客服机器人"
+        assert data["template_key"] == "support_responder_test"
+        assert data["status"] == "pending_setup"
+        assert data["organization_name"] == "testuser 的团队"
+
+    def test_list_deployments_requires_auth(self, client):
+        r = client.get("/api/deployments")
+        assert r.status_code == 401
+
+    def test_upload_knowledge_base_and_publish(self, client, app_module, db):
+        token, deployment_id, _, _ = create_agent_deployment(client, app_module, db)
+        kb_res = client.post(f"/api/deployments/{deployment_id}/knowledge-base", headers=auth(token), json={
+            "name": "售前 FAQ",
+            "documents": [{
+                "title": "服务时间",
+                "content": "我们支持 7x24 在线答复，并在复杂场景下转人工。",
+                "doc_type": "faq",
+                "source_name": "service-time.md",
+            }],
+        })
+        assert kb_res.status_code == 201
+        kb_data = json.loads(kb_res.data)
+        assert kb_data["knowledge_base"]["name"] == "售前 FAQ"
+        assert len(kb_data["documents"]) == 1
+
+        publish_res = client.post(f"/api/deployments/{deployment_id}/publish", headers=auth(token))
+        assert publish_res.status_code == 200
+        publish_data = json.loads(publish_res.data)
+        assert publish_data["deployment"]["status"] == "active"
+        assert publish_data["knowledge_bases"][0]["status"] == "active"
+
+
+class TestChat:
+    def test_chat_message_returns_answer_and_metrics(self, client, app_module, db):
+        token, deployment_id, _, _ = create_agent_deployment(
+            client,
+            app_module,
+            db,
+            publish=True,
+            knowledge_content="我们支持 7x24 在线客服，低置信度问题会自动转人工继续处理。",
+        )
+
+        chat_res = client.post(f"/api/chat/{deployment_id}/message", json={
+            "message": "你们支持7x24在线吗？",
+            "visitor_name": "访客 A",
+        })
+        assert chat_res.status_code == 200
+        chat_data = json.loads(chat_res.data)
+        assert "7x24" in chat_data["assistant_message"]["content"]
+        assert chat_data["session"]["message_count"] == 2
+
+        sessions_res = client.get(f"/api/chat/{deployment_id}/sessions", headers=auth(token))
+        assert sessions_res.status_code == 200
+        sessions_data = json.loads(sessions_res.data)
+        assert sessions_data["total"] == 1
+
+        metrics_res = client.get(f"/api/chat/{deployment_id}/metrics", headers=auth(token))
+        assert metrics_res.status_code == 200
+        metrics = json.loads(metrics_res.data)["metrics"]
+        assert metrics["messages_in"] == 1
+        assert metrics["messages_out"] == 1
+        assert metrics["knowledge_hits"] >= 1
+
+    def test_chat_low_confidence_creates_handoff(self, client, app_module, db):
+        _, deployment_id, _, _ = create_agent_deployment(
+            client,
+            app_module,
+            db,
+            publish=True,
+            knowledge_content="这里只记录营业时间和基础联系方式。",
+        )
+
+        chat_res = client.post(f"/api/chat/{deployment_id}/message", json={
+            "message": "我要投诉并申请退款",
+            "visitor_name": "访客 B",
+        })
+        assert chat_res.status_code == 200
+        chat_data = json.loads(chat_res.data)
+        assert chat_data["session"]["needs_handoff"] is True
+        assert chat_data["handoff_ticket"] is not None
+        assert chat_data["handoff_ticket"]["status"] == "open"
+
+    def test_manual_handoff_endpoint(self, client, app_module, db):
+        _, deployment_id, _, _ = create_agent_deployment(
+            client,
+            app_module,
+            db,
+            publish=True,
+            knowledge_content="我们支持 7x24 在线客服。",
+        )
+
+        chat_res = client.post(f"/api/chat/{deployment_id}/message", json={
+            "message": "你们能提供在线支持吗？",
+            "visitor_name": "访客 C",
+        })
+        session_id = json.loads(chat_res.data)["session"]["id"]
+
+        handoff_res = client.post(f"/api/chat/{deployment_id}/handoff", json={
+            "session_id": session_id,
+            "reason": "需要人工报价",
+            "summary": "访客希望进一步联系销售",
+        })
+        assert handoff_res.status_code == 201
+        handoff_data = json.loads(handoff_res.data)
+        assert handoff_data["handoff_ticket"]["reason"] == "需要人工报价"
+
 
 # ==================== Security / Infra ====================
 
@@ -466,6 +719,7 @@ class TestSchemaMigrations:
 
     def test_ensure_order_schema_is_idempotent(self, app_module, db):
         with app_module.app.app_context():
+            db.create_all()
             app_module.ensure_order_schema()
             column_names = [column["name"] for column in app_module.inspect(db.engine).get_columns("orders") if column["name"] == "activated_at"]
             assert column_names == ["activated_at"]

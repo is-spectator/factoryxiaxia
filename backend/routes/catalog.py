@@ -1,7 +1,7 @@
 """分类、员工列表、员工详情、评价、推荐路由"""
 from flask import Blueprint, request, jsonify
 from extensions import db
-from models import Category, Worker, Review, Order
+from models import Category, Worker, Review, Order, AgentTemplate
 from utils.auth import get_current_user
 
 bp = Blueprint("catalog", __name__)
@@ -67,7 +67,13 @@ def get_worker_detail(worker_id):
     worker = Worker.query.get(worker_id)
     if not worker:
         return jsonify({"error": "数字员工不存在"}), 404
-    return jsonify({"worker": worker.to_dict()}), 200
+    worker_data = worker.to_dict()
+    if worker.template_key:
+        template = AgentTemplate.query.filter_by(key=worker.template_key).first()
+        worker_data["agent_template"] = template.to_dict() if template else None
+    else:
+        worker_data["agent_template"] = None
+    return jsonify({"worker": worker_data}), 200
 
 
 @bp.route("/api/workers/<int:worker_id>/reviews", methods=["GET"])

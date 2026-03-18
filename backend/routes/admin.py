@@ -3,7 +3,8 @@ import datetime
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import (User, Worker, Category, Order, ROLES,
-                    ORDER_STATUSES, ORDER_TRANSITIONS)
+                    ORDER_STATUSES, ORDER_TRANSITIONS, AgentTemplate,
+                    ServicePlan, Deployment)
 from utils.auth import require_admin
 from services.messages import send_message
 
@@ -201,6 +202,9 @@ def admin_create_worker():
         hourly_rate=hourly_rate,
         billing_unit=data.get("billing_unit", "时薪"),
         status=data.get("status", "online"),
+        worker_type=data.get("worker_type", "general"),
+        delivery_mode=data.get("delivery_mode", "manual_service"),
+        template_key=data.get("template_key"),
     )
     db.session.add(worker)
     db.session.commit()
@@ -219,7 +223,8 @@ def admin_update_worker(worker_id):
 
     data = request.get_json(silent=True) or {}
     for field in ["name", "avatar_icon", "avatar_gradient_from", "avatar_gradient_to",
-                  "skills", "description", "billing_unit", "status"]:
+                  "skills", "description", "billing_unit", "status",
+                  "worker_type", "delivery_mode", "template_key"]:
         if field in data:
             setattr(worker, field, data[field])
     if "category_id" in data:
@@ -256,6 +261,114 @@ def admin_delete_worker(worker_id):
     db.session.delete(worker)
     db.session.commit()
     return jsonify({"message": "删除成功"}), 200
+
+
+@bp.route("/api/admin/agent-templates", methods=["GET"])
+def admin_list_agent_templates():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    templates = AgentTemplate.query.order_by(AgentTemplate.id.desc()).all()
+    return jsonify({"agent_templates": [t.to_dict() for t in templates]}), 200
+
+
+@bp.route("/api/admin/service-plans", methods=["GET"])
+def admin_list_service_plans():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    worker_id = request.args.get("worker_id", type=int)
+    query = ServicePlan.query
+    if worker_id:
+        query = query.filter_by(worker_id=worker_id)
+    plans = query.order_by(ServicePlan.id.desc()).all()
+    return jsonify({"service_plans": [p.to_dict() for p in plans]}), 200
+
+
+@bp.route("/api/admin/service-plans", methods=["POST"])
+def admin_create_service_plan():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    data = request.get_json(silent=True) or {}
+    worker_id = data.get("worker_id")
+    slug = (data.get("slug") or "").strip()
+    name = (data.get("name") or "").strip()
+    price = data.get("price")
+
+    if not worker_id or not slug or not name or price is None:
+        return jsonify({"error": "worker_id、slug、name、price 为必填"}), 400
+
+    worker = Worker.query.get(worker_id)
+    if not worker:
+        return jsonify({"error": "数字员工不存在"}), 404
+
+    existing = ServicePlan.query.filter_by(worker_id=worker_id, slug=slug).first()
+    if existing:
+        return jsonify({"error": "该套餐 slug 已存在"}), 409
+
+    plan = ServicePlan(
+        worker_id=worker_id,
+        slug=slug,
+        name=name,
+        description=(data.get("description") or "").strip(),
+        billing_cycle=(data.get("billing_cycle") or "monthly").strip() or "monthly",
+        price=price,
+        currency=(data.get("currency") or "CNY").strip() or "CNY",
+        included_conversations=data.get("included_conversations", 500),
+        max_handoffs=data.get("max_handoffs", 50),
+        channel_limit=data.get("channel_limit", 1),
+        seat_limit=data.get("seat_limit", 1),
+        default_duration_hours=data.get("default_duration_hours", 720),
+        is_active=bool(data.get("is_active", True)),
+    )
+    db.session.add(plan)
+    db.session.commit()
+    return jsonify({"message": "套餐创建成功", "service_plan": plan.to_dict()}), 201
+
+
+@bp.route("/api/admin/service-plans/<int:plan_id>", methods=["PUT"])
+def admin_update_service_plan(plan_id):
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    plan = ServicePlan.query.get(plan_id)
+    if not plan:
+        return jsonify({"error": "套餐不存在"}), 404
+
+    data = request.get_json(silent=True) or {}
+    for field in ["name", "description", "billing_cycle", "currency"]:
+        if field in data:
+            setattr(plan, field, (data.get(field) or "").strip())
+    for field in ["included_conversations", "max_handoffs", "channel_limit",
+                  "seat_limit", "default_duration_hours"]:
+        if field in data:
+            setattr(plan, field, int(data[field]))
+    if "price" in data:
+        plan.price = data["price"]
+    if "is_active" in data:
+        plan.is_active = bool(data["is_active"])
+
+    db.session.commit()
+    return jsonify({"message": "套餐更新成功", "service_plan": plan.to_dict()}), 200
+
+
+@bp.route("/api/admin/deployments", methods=["GET"])
+def admin_list_deployments():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    status = request.args.get("status", type=str)
+    query = Deployment.query
+    if status:
+        query = query.filter_by(status=status)
+    deployments = query.order_by(Deployment.created_at.desc()).all()
+    return jsonify({"deployments": [d.to_dict() for d in deployments]}), 200
 
 
 @bp.route("/api/admin/orders", methods=["GET"])

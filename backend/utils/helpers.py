@@ -59,3 +59,8 @@ def generate_order_no():
 def generate_payment_no():
     now = datetime.datetime.utcnow()
     return now.strftime("PAY%Y%m%d%H%M%S") + str(random.randint(100000, 999999))
+
+
+def generate_ticket_no():
+    now = datetime.datetime.utcnow()
+    return now.strftime("HT%Y%m%d%H%M%S") + str(random.randint(1000, 9999))

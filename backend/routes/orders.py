@@ -3,7 +3,7 @@ import datetime
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import (Order, Worker, Payment, Review, Message,
-                    Favorite, ORDER_TRANSITIONS)
+                    Favorite, ServicePlan, ORDER_TRANSITIONS)
 from utils.auth import get_current_user, require_admin
 from utils.helpers import generate_order_no, generate_payment_no
 from services.messages import send_message
@@ -25,17 +25,11 @@ def create_order():
 
     worker_id = data.get("worker_id")
     duration_hours = data.get("duration_hours")
+    service_plan_id = data.get("service_plan_id")
     remark = (data.get("remark") or "").strip()
 
-    if not worker_id or not duration_hours:
-        return jsonify({"error": "请选择员工和租赁时长"}), 400
-
-    try:
-        duration_hours = int(duration_hours)
-    except (ValueError, TypeError):
-        return jsonify({"error": "租赁时长必须为数字"}), 400
-    if duration_hours < 1 or duration_hours > 8760:
-        return jsonify({"error": "租赁时长应在1-8760小时之间"}), 400
+    if not worker_id:
+        return jsonify({"error": "请选择员工"}), 400
 
     worker = Worker.query.get(worker_id)
     if not worker:
@@ -43,14 +37,38 @@ def create_order():
     if worker.status == "offline":
         return jsonify({"error": "该数字员工当前不可用"}), 400
 
-    total_amount = round(float(worker.hourly_rate) * duration_hours, 2)
+    service_plan = None
+    order_type = "rental"
+    if service_plan_id or worker.worker_type == "agent_service":
+        if not service_plan_id:
+            return jsonify({"error": "该机器人需选择服务套餐"}), 400
+        service_plan = ServicePlan.query.filter_by(
+            id=service_plan_id, worker_id=worker.id, is_active=True
+        ).first()
+        if not service_plan:
+            return jsonify({"error": "服务套餐不存在或已下架"}), 400
+        duration_hours = service_plan.default_duration_hours
+        total_amount = float(service_plan.price)
+        order_type = "agent_deployment"
+    else:
+        if duration_hours is None:
+            return jsonify({"error": "请选择租赁时长"}), 400
+        try:
+            duration_hours = int(duration_hours)
+        except (ValueError, TypeError):
+            return jsonify({"error": "租赁时长必须为数字"}), 400
+        if duration_hours < 1 or duration_hours > 8760:
+            return jsonify({"error": "租赁时长应在1-8760小时之间"}), 400
+        total_amount = round(float(worker.hourly_rate) * duration_hours, 2)
 
     order = Order(
         order_no=generate_order_no(),
         user_id=user.id,
         worker_id=worker.id,
+        service_plan_id=service_plan.id if service_plan else None,
         duration_hours=duration_hours,
         total_amount=total_amount,
+        order_type=order_type,
         status="pending",
         remark=remark,
     )
