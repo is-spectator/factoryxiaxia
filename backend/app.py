@@ -51,7 +51,6 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # ===== 初始化扩展 =====
 db.init_app(app)
 limiter.init_app(app)
-limiter._default_limits = [os.environ.get("RATE_LIMIT_DEFAULT", "60/minute")]
 
 # ===== 中间件 =====
 
