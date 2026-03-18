@@ -12,6 +12,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import bcrypt
 import jwt
+from sqlalchemy import inspect
 
 # ===== 结构化日志 =====
 
@@ -116,6 +117,26 @@ def handle_429(e):
 
 
 # ===== 数据模型 =====
+
+
+def ensure_order_schema():
+    """Ensure incremental schema changes exist for deployments reusing an older database."""
+    inspector = inspect(db.engine)
+    if "orders" not in inspector.get_table_names():
+        return
+
+    order_columns = {column["name"] for column in inspector.get_columns("orders")}
+    if "activated_at" in order_columns:
+        return
+
+    alter_sql = "ALTER TABLE orders ADD COLUMN activated_at DATETIME NULL"
+    if db.engine.dialect.name == "mysql":
+        alter_sql += " AFTER paid_at"
+
+    with db.engine.begin() as conn:
+        conn.execute(db.text(alter_sql))
+    logger.info("Applied startup schema migration: added orders.activated_at")
+
 
 ROLES = ["user", "operator", "admin"]
 
@@ -1520,6 +1541,7 @@ def api_docs():
 
 with app.app_context():
     db.create_all()
+    ensure_order_schema()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
