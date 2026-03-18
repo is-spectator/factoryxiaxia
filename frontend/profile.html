@@ -51,10 +51,10 @@
         </div>
     </div>
     <div class="flex items-center space-x-6">
-        <div class="relative">
+        <a href="messages.html" class="relative">
             <span class="iconify text-2xl text-gray-400 cursor-pointer hover:text-white" data-icon="mdi:bell-outline"></span>
-            <span class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold">3</span>
-        </div>
+            <span id="nav-bell-badge" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold hidden">0</span>
+        </a>
         <div class="flex items-center space-x-3 border-l border-white/10 pl-6">
             <div class="w-10 h-10 rounded-full bg-gradient-to-r from-[#6A0DAD] to-cyan-500 flex items-center justify-center text-sm font-bold" id="nav-avatar">U</div>
             <div class="hidden md:block">
@@ -108,7 +108,7 @@
             <div class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
                 <div>
                     <h1 class="text-3xl font-bold mb-1">您好, <span id="greeting-name">用户</span></h1>
-                    <p class="text-gray-400">当前有 4 位数字员工正在为您工作</p>
+                    <p class="text-gray-400" id="greeting-subtitle">正在加载数据...</p>
                 </div>
                 <div class="flex space-x-3">
                     <a href="workers.html" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2.5 rounded-xl text-sm font-bold transition inline-block">新雇佣员工</a>
@@ -120,42 +120,42 @@
                 <div class="card-profile p-6">
                     <div class="flex justify-between items-start mb-4">
                         <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500">
-                            <span class="iconify text-xl" data-icon="mdi:timer-outline"></span>
+                            <span class="iconify text-xl" data-icon="mdi:play-circle-outline"></span>
                         </div>
-                        <span class="text-xs text-green-400">+12% ↑</span>
+                        <span class="text-xs text-gray-500" id="stat1-trend"></span>
                     </div>
-                    <p class="text-gray-500 text-xs mb-1">累计工时</p>
-                    <h3 class="text-2xl font-bold">1,284h</h3>
+                    <p class="text-gray-500 text-xs mb-1">活跃订单</p>
+                    <h3 class="text-2xl font-bold" id="stat-active-orders">--</h3>
                 </div>
                 <div class="card-profile p-6">
                     <div class="flex justify-between items-start mb-4">
                         <div class="w-10 h-10 rounded-lg bg-[#6A0DAD]/20 flex items-center justify-center text-[#6A0DAD]">
                             <span class="iconify text-xl" data-icon="mdi:rocket-launch-outline"></span>
                         </div>
-                        <span class="text-xs text-gray-500">持平</span>
+                        <span class="text-xs text-gray-500" id="stat2-trend"></span>
                     </div>
-                    <p class="text-gray-500 text-xs mb-1">执行任务数</p>
-                    <h3 class="text-2xl font-bold">42,903</h3>
+                    <p class="text-gray-500 text-xs mb-1">累计订单</p>
+                    <h3 class="text-2xl font-bold" id="stat-total-orders">--</h3>
                 </div>
                 <div class="card-profile p-6">
                     <div class="flex justify-between items-start mb-4">
                         <div class="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-500">
                             <span class="iconify text-xl" data-icon="mdi:currency-usd"></span>
                         </div>
-                        <span class="text-xs text-red-400">-5% ↓</span>
+                        <span class="text-xs text-gray-500" id="stat3-trend"></span>
                     </div>
-                    <p class="text-gray-500 text-xs mb-1">本月节省成本</p>
-                    <h3 class="text-2xl font-bold">￥14,200</h3>
+                    <p class="text-gray-500 text-xs mb-1">累计消费</p>
+                    <h3 class="text-2xl font-bold" id="stat-total-spent">--</h3>
                 </div>
                 <div class="card-profile p-6">
                     <div class="flex justify-between items-start mb-4">
                         <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-500">
-                            <span class="iconify text-xl" data-icon="mdi:star-outline"></span>
+                            <span class="iconify text-xl" data-icon="mdi:bell-badge-outline"></span>
                         </div>
-                        <span class="text-xs text-gray-500">Top 1%</span>
+                        <span class="text-xs text-gray-500" id="stat4-trend"></span>
                     </div>
-                    <p class="text-gray-500 text-xs mb-1">账号安全等级</p>
-                    <h3 class="text-2xl font-bold italic">SSS</h3>
+                    <p class="text-gray-500 text-xs mb-1">未读消息</p>
+                    <h3 class="text-2xl font-bold" id="stat-unread-messages">--</h3>
                 </div>
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -165,39 +165,10 @@
                     <section>
                         <div class="flex justify-between items-center mb-6">
                             <h4 class="font-bold flex items-center"><span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:account-group"></span> 活跃数字员工</h4>
-                            <a class="text-xs text-cyan-400" href="#">管理全部</a>
+                            <a class="text-xs text-cyan-400" href="orders.html">管理全部</a>
                         </div>
-                        <div class="space-y-4">
-                            <div class="card-profile p-5 flex items-center justify-between">
-                                <div class="flex items-center space-x-4">
-                                    <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center">
-                                        <span class="iconify text-2xl" data-icon="mdi:code-braces"></span>
-                                    </div>
-                                    <div>
-                                        <h5 class="font-bold text-sm">全栈代码专家 #082</h5>
-                                        <p class="text-[10px] text-gray-500">正在重构：API Gateway</p>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <span class="block text-xs font-bold text-green-400">运行中</span>
-                                    <span class="text-[10px] text-gray-500">到期: 2026.04.12</span>
-                                </div>
-                            </div>
-                            <div class="card-profile p-5 flex items-center justify-between">
-                                <div class="flex items-center space-x-4">
-                                    <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center">
-                                        <span class="iconify text-2xl" data-icon="mdi:palette-outline"></span>
-                                    </div>
-                                    <div>
-                                        <h5 class="font-bold text-sm">UI/UX 动效助手</h5>
-                                        <p class="text-[10px] text-gray-500">等待指派任务</p>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <span class="block text-xs font-bold text-blue-400">待命</span>
-                                    <span class="text-[10px] text-gray-500">到期: 2026.05.01</span>
-                                </div>
-                            </div>
+                        <div class="space-y-4" id="active-workers-list">
+                            <div class="text-center py-8 text-gray-600 text-sm">加载中...</div>
                         </div>
                     </section>
                     <!-- 最近账单 -->
@@ -213,19 +184,8 @@
                                         <th class="px-6 py-4">状态</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-white/5">
-                                    <tr>
-                                        <td class="px-6 py-4 font-medium">季度订阅：全栈专家包</td>
-                                        <td class="px-6 py-4">2026-03-10</td>
-                                        <td class="px-6 py-4">￥12,800.00</td>
-                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-green-500/20 text-green-400 rounded text-[10px]">已支付</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td class="px-6 py-4 font-medium">按量付费：算力扩容</td>
-                                        <td class="px-6 py-4">2026-03-05</td>
-                                        <td class="px-6 py-4">￥542.20</td>
-                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-green-500/20 text-green-400 rounded text-[10px]">已支付</span></td>
-                                    </tr>
+                                <tbody class="divide-y divide-white/5" id="billing-table-body">
+                                    <tr><td colspan="4" class="px-6 py-8 text-center text-gray-600 text-sm">加载中...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -261,24 +221,10 @@
                     <section class="card-profile p-8">
                         <h4 class="font-bold mb-6 flex justify-between items-center">
                             消息通知
-                            <span class="text-[10px] bg-[#6A0DAD] px-2 py-0.5 rounded-full">3</span>
+                            <span class="text-[10px] bg-[#6A0DAD] px-2 py-0.5 rounded-full" id="msg-section-badge">0</span>
                         </h4>
-                        <div class="space-y-6">
-                            <div class="flex space-x-3 border-b border-white/5 pb-4">
-                                <div class="mt-1"><span class="iconify text-cyan-400" data-icon="mdi:alert-decagram-outline"></span></div>
-                                <div>
-                                    <p class="text-xs font-bold">系统升级提醒</p>
-                                    <p class="text-[10px] text-gray-500 mt-1">虾虾工厂 v3.5 已于今日上线，新增多模态交互引擎。</p>
-                                </div>
-                            </div>
-                            <div class="flex space-x-3 border-b border-white/5 pb-4">
-                                <div class="mt-1"><span class="iconify text-orange-400" data-icon="mdi:alert-outline"></span></div>
-                                <div>
-                                    <p class="text-xs font-bold">租赁即将到期</p>
-                                    <p class="text-[10px] text-gray-500 mt-1">"代码专家 #082" 还有 7 天到期，请及时续费。</p>
-                                </div>
-                            </div>
-                            <button class="w-full text-xs text-gray-500 hover:text-white transition">查看全部消息</button>
+                        <div class="space-y-6" id="messages-list">
+                            <div class="text-center py-4 text-gray-600 text-sm">加载中...</div>
                         </div>
                     </section>
                     <!-- 快捷设置 -->
@@ -307,43 +253,89 @@
     <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
 </footer>
 <script>
+    /* ── HTML escape helper ── */
+    function esc(str) {
+        if (str == null) return '';
+        const d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(str)));
+        return d.innerHTML;
+    }
+
+    /* ── Auth helpers ── */
+    const token = localStorage.getItem('xiaxia_token');
+    if (!token) { window.location.href = 'login.html'; }
+
+    function authHeaders() {
+        return { 'Authorization': 'Bearer ' + token };
+    }
+
+    function handle401(res) {
+        if (res.status === 401) {
+            localStorage.removeItem('xiaxia_token');
+            localStorage.removeItem('xiaxia_user');
+            window.location.href = 'login.html';
+            return true;
+        }
+        return false;
+    }
+
     function logout() {
         localStorage.removeItem('xiaxia_token');
         localStorage.removeItem('xiaxia_user');
         window.location.href = 'login.html';
     }
 
-    async function loadProfile() {
-        const token = localStorage.getItem('xiaxia_token');
-        if (!token) {
-            window.location.href = 'login.html';
-            return;
-        }
+    /* ── Status config (matches orders.html) ── */
+    const statusConfig = {
+        pending:   { label: '待支付', color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
+        paid:      { label: '已支付', color: 'text-blue-400',   bg: 'bg-blue-500/20' },
+        active:    { label: '服务中', color: 'text-green-400',  bg: 'bg-green-500/20' },
+        completed: { label: '已完成', color: 'text-gray-400',   bg: 'bg-gray-500/20' },
+        cancelled: { label: '已取消', color: 'text-red-400',    bg: 'bg-red-500/20' },
+        refunded:  { label: '已退款', color: 'text-orange-400', bg: 'bg-orange-500/20' },
+    };
 
+    /* ── Message icon map (matches messages.html) ── */
+    const iconMap = {
+        order:  { icon: 'mdi:clipboard-text-outline', color: 'text-blue-400' },
+        review: { icon: 'mdi:star-outline',           color: 'text-yellow-400' },
+        system: { icon: 'mdi:bell-outline',            color: 'text-gray-400' },
+    };
+
+    /* ── Format time helper ── */
+    function formatTime(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        const now = new Date();
+        const diff = (now - d) / 1000;
+        if (diff < 60) return '刚刚';
+        if (diff < 3600) return Math.floor(diff / 60) + '分钟前';
+        if (diff < 86400) return Math.floor(diff / 3600) + '小时前';
+        return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
+
+    /* ========================================
+       Load all data in parallel
+       ======================================== */
+
+    async function loadProfile() {
         try {
-            const res = await fetch('/api/profile', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            if (!res.ok) {
-                localStorage.removeItem('xiaxia_token');
-                localStorage.removeItem('xiaxia_user');
-                window.location.href = 'login.html';
-                return;
-            }
+            const res = await fetch('/api/profile', { headers: authHeaders() });
+            if (handle401(res)) return;
+            if (!res.ok) return;
             const data = await res.json();
             const user = data.user;
-            const initial = (user.username || 'U')[0].toUpperCase();
+            const initial = esc((user.username || 'U')[0].toUpperCase());
 
             document.getElementById('nav-username').textContent = user.username;
             document.getElementById('nav-avatar').textContent = initial;
             document.getElementById('greeting-name').textContent = user.username;
             document.getElementById('profile-username').textContent = user.username;
             document.getElementById('profile-avatar').textContent = initial;
-            document.getElementById('profile-id').textContent = 'ID: ' + user.id;
+            document.getElementById('profile-id').textContent = 'ID: ' + esc(user.id);
             document.getElementById('profile-email').textContent = user.email;
             document.getElementById('profile-created').textContent = user.created_at ? user.created_at.split('T')[0] : '---';
         } catch (err) {
-            // 网络错误时尝试使用本地缓存
             const userStr = localStorage.getItem('xiaxia_user');
             if (userStr) {
                 const user = JSON.parse(userStr);
@@ -353,13 +345,183 @@
                 document.getElementById('greeting-name').textContent = user.username;
                 document.getElementById('profile-username').textContent = user.username;
                 document.getElementById('profile-avatar').textContent = initial;
-                document.getElementById('profile-id').textContent = 'ID: ' + user.id;
-                document.getElementById('profile-email').textContent = user.email;
+                document.getElementById('profile-id').textContent = 'ID: ' + esc(user.id);
+                document.getElementById('profile-email').textContent = user.email || '---';
             }
         }
     }
 
-    loadProfile();
+    async function loadOrders() {
+        try {
+            /* Fetch all orders (large per_page to compute stats) and recent 5 for table */
+            const [allRes, recentRes] = await Promise.all([
+                fetch('/api/orders?per_page=50', { headers: authHeaders() }),
+                fetch('/api/orders?per_page=5', { headers: authHeaders() }),
+            ]);
+            if (handle401(allRes) || handle401(recentRes)) return;
+
+            const allData = await allRes.json();
+            const recentData = await recentRes.json();
+
+            const allOrders = allData.orders || [];
+            const totalOrderCount = allData.total || allOrders.length;
+            const recentOrders = recentData.orders || [];
+
+            /* ── Stat: active orders (status active or paid) ── */
+            const activeOrders = allOrders.filter(o => o.status === 'active' || o.status === 'paid');
+            const activeCount = activeOrders.length;
+            document.getElementById('stat-active-orders').textContent = activeCount;
+
+            /* ── Stat: total orders ── */
+            document.getElementById('stat-total-orders').textContent = totalOrderCount.toLocaleString();
+
+            /* ── Stat: total spent (paid + active + completed) ── */
+            const spentStatuses = new Set(['paid', 'active', 'completed']);
+            const totalSpent = allOrders
+                .filter(o => spentStatuses.has(o.status))
+                .reduce((sum, o) => sum + (o.total_amount || 0), 0);
+            document.getElementById('stat-total-spent').textContent = '¥' + totalSpent.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+            /* ── Greeting subtitle ── */
+            document.getElementById('greeting-subtitle').textContent =
+                activeCount > 0
+                    ? '当前有 ' + activeCount + ' 位数字员工正在为您工作'
+                    : '当前没有活跃的数字员工';
+
+            /* ── Active workers section ── */
+            renderActiveWorkers(activeOrders);
+
+            /* ── Billing table ── */
+            renderBillingTable(recentOrders);
+        } catch (err) {
+            document.getElementById('active-workers-list').innerHTML = '<div class="text-center py-8 text-gray-600 text-sm">加载失败</div>';
+            document.getElementById('billing-table-body').innerHTML = '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-600 text-sm">加载失败</td></tr>';
+        }
+    }
+
+    function renderActiveWorkers(activeOrders) {
+        const container = document.getElementById('active-workers-list');
+        if (!activeOrders || activeOrders.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-600 text-sm">
+                    <span class="iconify text-3xl mb-2 inline-block" data-icon="mdi:robot-off-outline"></span>
+                    <p>暂无活跃的数字员工</p>
+                    <a href="workers.html" class="text-cyan-400 text-xs hover:underline mt-2 inline-block">去市场雇佣</a>
+                </div>`;
+            return;
+        }
+        container.innerHTML = activeOrders.map(o => {
+            const gradFrom = o.worker_gradient_from || '#6A0DAD';
+            const gradTo = o.worker_gradient_to || '#00D2FF';
+            const icon = o.worker_icon || 'mdi:robot-happy-outline';
+            const statusLabel = o.status === 'active' ? '运行中' : '已支付';
+            const statusColor = o.status === 'active' ? 'text-green-400' : 'text-blue-400';
+            const activatedDate = o.activated_at ? o.activated_at.split('T')[0].replace(/-/g, '.') : (o.created_at ? o.created_at.split('T')[0].replace(/-/g, '.') : '--');
+            return `
+            <div class="card-profile p-5 flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center" style="background: linear-gradient(135deg, ${esc(gradFrom)}, ${esc(gradTo)})">
+                        <span class="iconify text-2xl" data-icon="${esc(icon)}"></span>
+                    </div>
+                    <div>
+                        <h5 class="font-bold text-sm">${esc(o.worker_name || '数字员工')}</h5>
+                        <p class="text-[10px] text-gray-500">订单号: ${esc(o.order_no)}</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="block text-xs font-bold ${statusColor}">${statusLabel}</span>
+                    <span class="text-[10px] text-gray-500">时长: ${esc(o.duration_hours)}h</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderBillingTable(orders) {
+        const tbody = document.getElementById('billing-table-body');
+        if (!orders || orders.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-600 text-sm">暂无账单记录</td></tr>';
+            return;
+        }
+        tbody.innerHTML = orders.map(o => {
+            const sc = statusConfig[o.status] || statusConfig.pending;
+            const dateStr = o.paid_at ? o.paid_at.split('T')[0] : (o.created_at ? o.created_at.split('T')[0] : '--');
+            return `
+            <tr>
+                <td class="px-6 py-4 font-medium">${esc(o.worker_name || '数字员工服务')}</td>
+                <td class="px-6 py-4">${esc(dateStr)}</td>
+                <td class="px-6 py-4">¥${o.total_amount != null ? Number(o.total_amount).toFixed(2) : '0.00'}</td>
+                <td class="px-6 py-4"><span class="px-2 py-1 ${sc.bg} ${sc.color} rounded text-[10px]">${esc(sc.label)}</span></td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function loadUnreadCount() {
+        try {
+            const res = await fetch('/api/messages/unread-count', { headers: authHeaders() });
+            if (handle401(res)) return;
+            const data = await res.json();
+            const count = data.unread_count || 0;
+
+            /* Stat card */
+            document.getElementById('stat-unread-messages').textContent = count;
+
+            /* Nav bell badge */
+            const badge = document.getElementById('nav-bell-badge');
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+
+            /* Message section badge */
+            document.getElementById('msg-section-badge').textContent = count;
+        } catch (err) { /* silent */ }
+    }
+
+    async function loadMessages() {
+        try {
+            const res = await fetch('/api/messages?per_page=3', { headers: authHeaders() });
+            if (handle401(res)) return;
+            const data = await res.json();
+            const messages = data.messages || [];
+
+            const container = document.getElementById('messages-list');
+            if (messages.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-gray-600 text-sm">暂无消息</div>
+                    <a href="messages.html" class="block w-full text-xs text-gray-500 hover:text-white transition text-center">查看全部消息</a>`;
+                return;
+            }
+
+            let html = messages.map(m => {
+                const ic = iconMap[m.msg_type] || iconMap.system;
+                return `
+                <div class="flex space-x-3 border-b border-white/5 pb-4">
+                    <div class="mt-1"><span class="iconify ${ic.color}" data-icon="${esc(ic.icon)}"></span></div>
+                    <div class="min-w-0 flex-grow">
+                        <p class="text-xs font-bold">${esc(m.title)}</p>
+                        <p class="text-[10px] text-gray-500 mt-1 truncate">${esc(m.content)}</p>
+                        <p class="text-[10px] text-gray-600 mt-1">${formatTime(m.created_at)}</p>
+                    </div>
+                    ${!m.is_read ? '<div class="w-2 h-2 rounded-full bg-[#6A0DAD] flex-shrink-0 mt-2"></div>' : ''}
+                </div>`;
+            }).join('');
+
+            html += '<a href="messages.html" class="block w-full text-xs text-gray-500 hover:text-white transition text-center">查看全部消息</a>';
+            container.innerHTML = html;
+        } catch (err) {
+            document.getElementById('messages-list').innerHTML = '<div class="text-center py-4 text-gray-600 text-sm">加载失败</div>';
+        }
+    }
+
+    /* ── Init: fire all requests in parallel ── */
+    Promise.all([
+        loadProfile(),
+        loadOrders(),
+        loadUnreadCount(),
+        loadMessages(),
+    ]);
 </script>
 </body>
 </html>

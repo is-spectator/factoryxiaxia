@@ -13,6 +13,9 @@
         .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .btn-glow:hover { box-shadow: 0 0 20px rgba(106,13,173,0.6); transform: translateY(-2px); }
         .card-profile { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .card-hover:hover { border-color: #6A0DAD; transform: translateY(-5px); transition: all 0.3s ease; }
+        .fav-btn { transition: all 0.2s ease; }
+        .fav-btn:hover { transform: scale(1.1); }
     </style>
 </head>
 <body class="overflow-x-hidden min-h-screen">
@@ -45,6 +48,35 @@
 </footer>
 
 <script>
+    // XSS escape utility
+    function esc(str) {
+        if (str == null) return '';
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(String(str)));
+        return div.innerHTML;
+    }
+
+    // 401 handler
+    function handle401(res) {
+        if (res.status === 401) {
+            localStorage.removeItem('xiaxia_token');
+            localStorage.removeItem('xiaxia_user');
+            window.location.href = 'login.html';
+            return true;
+        }
+        return false;
+    }
+
+    function getToken() {
+        return localStorage.getItem('xiaxia_token');
+    }
+
+    function authHeaders() {
+        const token = getToken();
+        if (!token) return {};
+        return { 'Authorization': 'Bearer ' + token };
+    }
+
     // 登录状态
     (function() {
         const token = localStorage.getItem('xiaxia_token');
@@ -53,7 +85,7 @@
             const user = JSON.parse(userStr);
             document.getElementById('nav-auth').innerHTML = `
                 <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
-                    <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>${user.username}
+                    <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>${esc(user.username)}
                 </a>
                 <button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>
             `;
@@ -63,21 +95,6 @@
 
     const params = new URLSearchParams(window.location.search);
     const workerId = params.get('id');
-
-    async function loadWorker() {
-        if (!workerId) {
-            document.getElementById('main-content').innerHTML = '<div class="text-center py-20 text-red-400">缺少员工ID参数</div>';
-            return;
-        }
-        try {
-            const res = await fetch(`/api/workers/${workerId}`);
-            if (!res.ok) throw new Error('not found');
-            const data = await res.json();
-            renderDetail(data.worker);
-        } catch(e) {
-            document.getElementById('main-content').innerHTML = '<div class="text-center py-20 text-red-400">数字员工不存在</div>';
-        }
-    }
 
     function renderStars(rating) {
         const full = Math.floor(rating);
@@ -90,11 +107,30 @@
         return html;
     }
 
+    function renderStarsSmall(rating) {
+        const full = Math.floor(rating);
+        const half = rating - full >= 0.5 ? 1 : 0;
+        const empty = 5 - full - half;
+        let html = '';
+        for (let i = 0; i < full; i++) html += '<span class="iconify text-yellow-400 text-xs" data-icon="mdi:star"></span>';
+        for (let i = 0; i < half; i++) html += '<span class="iconify text-yellow-400 text-xs" data-icon="mdi:star-half-full"></span>';
+        for (let i = 0; i < empty; i++) html += '<span class="iconify text-gray-600 text-xs" data-icon="mdi:star-outline"></span>';
+        return html;
+    }
+
     const statusMap = { online: { text: '在线', color: 'text-green-400', bg: 'bg-green-500' }, busy: { text: '忙碌', color: 'text-orange-400', bg: 'bg-orange-500' }, offline: { text: '离线', color: 'text-gray-500', bg: 'bg-gray-500' }};
 
     function renderDetail(w) {
         const s = statusMap[w.status] || statusMap.online;
         document.title = `${w.name} | 虾虾工厂`;
+        const token = getToken();
+        const favoriteButtonHtml = token ? `
+            <button id="fav-btn" onclick="toggleFavorite()" class="fav-btn w-full border border-white/20 hover:border-pink-500 py-3 rounded-xl font-medium text-sm transition flex items-center justify-center mt-3">
+                <span class="iconify mr-2 text-lg" data-icon="mdi:heart-outline" id="fav-icon"></span>
+                <span id="fav-text">收藏</span>
+            </button>
+        ` : '';
+
         document.getElementById('main-content').innerHTML = `
             <!-- 返回按钮 -->
             <a href="workers.html" class="inline-flex items-center text-sm text-gray-400 hover:text-white mb-8 transition">
@@ -109,23 +145,23 @@
                         <div class="flex flex-col sm:flex-row items-start gap-6">
                             <div class="relative">
                                 <div class="w-24 h-24 rounded-3xl flex items-center justify-center" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
-                                    <span class="iconify text-5xl" data-icon="${w.avatar_icon}"></span>
+                                    <span class="iconify text-5xl" data-icon="${esc(w.avatar_icon)}"></span>
                                 </div>
                                 <div class="absolute -bottom-1 -right-1 w-5 h-5 ${s.bg} rounded-full border-2 border-[#050714]"></div>
                             </div>
                             <div class="flex-1">
                                 <div class="flex items-center gap-3 mb-2">
-                                    <h1 class="text-3xl font-bold">${w.name}</h1>
-                                    <span class="bg-white/10 text-xs px-3 py-1 rounded-md uppercase tracking-widest">Lv. ${w.level}</span>
+                                    <h1 class="text-3xl font-bold">${esc(w.name)}</h1>
+                                    <span class="bg-white/10 text-xs px-3 py-1 rounded-md uppercase tracking-widest">Lv. ${esc(w.level)}</span>
                                     <span class="${s.color} text-sm font-medium flex items-center"><span class="w-2 h-2 ${s.bg} rounded-full mr-1"></span>${s.text}</span>
                                 </div>
                                 <div class="flex items-center gap-4 text-sm text-gray-400 mb-4">
-                                    <span><span class="iconify inline mr-1" data-icon="mdi:tag-outline"></span>${w.category_name}</span>
-                                    <span><span class="iconify inline mr-1" data-icon="mdi:shopping-outline"></span>${w.total_orders} 次雇佣</span>
-                                    <span class="flex items-center">${renderStars(w.rating)}<span class="ml-1">${w.rating}</span></span>
+                                    <span><span class="iconify inline mr-1" data-icon="mdi:tag-outline"></span>${esc(w.category_name)}</span>
+                                    <span><span class="iconify inline mr-1" data-icon="mdi:shopping-outline"></span>${esc(w.total_orders)} 次雇佣</span>
+                                    <span class="flex items-center">${renderStars(w.rating)}<span class="ml-1">${esc(w.rating)}</span></span>
                                 </div>
                                 <div class="flex flex-wrap gap-2">
-                                    ${w.skills.map(s => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${s}</span>`).join('')}
+                                    ${w.skills.map(sk => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${esc(sk)}</span>`).join('')}
                                 </div>
                             </div>
                         </div>
@@ -136,7 +172,7 @@
                         <h3 class="text-lg font-bold mb-4 flex items-center">
                             <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:text-box-outline"></span>详细介绍
                         </h3>
-                        <p class="text-gray-300 leading-relaxed">${w.description}</p>
+                        <p class="text-gray-300 leading-relaxed">${esc(w.description)}</p>
                     </div>
 
                     <!-- 能力指标 -->
@@ -157,7 +193,7 @@
                                     <span class="iconify text-2xl text-purple-400" data-icon="mdi:brain"></span>
                                 </div>
                                 <p class="text-sm font-bold">专业度</p>
-                                <p class="text-xs text-gray-500">Lv. ${w.level} / 10</p>
+                                <p class="text-xs text-gray-500">Lv. ${esc(w.level)} / 10</p>
                             </div>
                             <div class="text-center">
                                 <div class="w-16 h-16 mx-auto rounded-2xl bg-green-500/10 flex items-center justify-center mb-2">
@@ -175,6 +211,27 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- 用户评价 -->
+                    <div class="glass-morphism p-8 rounded-3xl">
+                        <h3 class="text-lg font-bold mb-6 flex items-center">
+                            <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:comment-text-multiple-outline"></span>用户评价
+                        </h3>
+                        <div id="reviews-container">
+                            <div class="text-center py-8 text-gray-500">加载评价中...</div>
+                        </div>
+                        <div id="reviews-pagination" class="mt-6"></div>
+                    </div>
+
+                    <!-- 相关推荐 -->
+                    <div>
+                        <h3 class="text-lg font-bold mb-6 flex items-center">
+                            <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:account-group-outline"></span>相关推荐
+                        </h3>
+                        <div id="recommendations-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                            <div class="col-span-full text-center py-8 text-gray-500">加载推荐中...</div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 右侧：租赁面板 -->
@@ -182,7 +239,7 @@
                     <div class="glass-morphism p-8 rounded-3xl sticky top-28">
                         <h3 class="text-lg font-bold mb-6">租赁方案</h3>
                         <div class="mb-6">
-                            <p class="text-xs text-gray-500 mb-1">${w.billing_unit}</p>
+                            <p class="text-xs text-gray-500 mb-1">${esc(w.billing_unit)}</p>
                             <p class="text-4xl font-bold text-gradient">￥${w.hourly_rate.toFixed(2)}</p>
                         </div>
 
@@ -223,19 +280,34 @@
                         <button onclick="goRent()" class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition flex items-center justify-center">
                             <span class="iconify mr-2" data-icon="mdi:cart-plus"></span>立即租赁
                         </button>
+                        ${favoriteButtonHtml}
                         <p class="text-[10px] text-gray-600 text-center mt-3">支持随时取消未开始的订单</p>
                     </div>
                 </div>
             </div>
         `;
+
+        // After rendering, load reviews, favorite status, and recommendations
+        loadReviews(1);
+        loadRecommendations();
+        if (token) {
+            checkFavoriteStatus();
+        }
     }
 
     let workerData = null;
+    let isFavorited = false;
+    let currentReviewPage = 1;
 
     async function init() {
-        if (!workerId) return;
+        if (!workerId) {
+            document.getElementById('main-content').innerHTML = '<div class="text-center py-20 text-red-400">缺少员工ID参数</div>';
+            return;
+        }
         try {
             const res = await fetch('/api/workers/' + workerId);
+            if (handle401(res)) return;
+            if (!res.ok) throw new Error('not found');
             const data = await res.json();
             workerData = data.worker;
             renderDetail(workerData);
@@ -244,6 +316,206 @@
         }
     }
 
+    // ==================== Reviews ====================
+    async function loadReviews(page) {
+        currentReviewPage = page;
+        const container = document.getElementById('reviews-container');
+        if (!container) return;
+        try {
+            const res = await fetch(`/api/workers/${workerId}/reviews?page=${page}&per_page=5`);
+            if (handle401(res)) return;
+            if (!res.ok) throw new Error('failed');
+            const data = await res.json();
+            renderReviews(data);
+        } catch(e) {
+            container.innerHTML = '<div class="text-center py-8 text-gray-500">加载评价失败</div>';
+        }
+    }
+
+    function renderReviews(data) {
+        const container = document.getElementById('reviews-container');
+        const paginationContainer = document.getElementById('reviews-pagination');
+        if (!container) return;
+
+        const reviews = data.reviews || [];
+        if (reviews.length === 0) {
+            container.innerHTML = '<div class="text-center py-8 text-gray-500">暂无评价</div>';
+            if (paginationContainer) paginationContainer.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = reviews.map(r => `
+            <div class="border-b border-white/5 pb-5 mb-5 last:border-b-0 last:pb-0 last:mb-0">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                            <span class="iconify text-sm text-gray-400" data-icon="mdi:account"></span>
+                        </div>
+                        <span class="text-sm font-medium">${esc(r.username)}</span>
+                        <div class="flex items-center">${renderStars(r.rating)}</div>
+                    </div>
+                    <span class="text-xs text-gray-500">${esc(r.date || r.created_at || '')}</span>
+                </div>
+                <p class="text-sm text-gray-300 leading-relaxed pl-11">${esc(r.content)}</p>
+            </div>
+        `).join('');
+
+        // Pagination / load more
+        if (paginationContainer) {
+            const totalPages = data.pages || 1;
+            const currentPage = data.page || 1;
+            if (totalPages > currentPage) {
+                paginationContainer.innerHTML = `
+                    <button onclick="loadReviews(${currentPage + 1})" class="w-full border border-white/10 hover:border-[#6A0DAD] py-3 rounded-xl text-sm text-gray-400 hover:text-white transition">
+                        查看更多评价
+                    </button>
+                `;
+            } else if (totalPages > 1) {
+                // Show page navigation for going back
+                let html = '<div class="flex justify-center items-center space-x-2">';
+                if (currentPage > 1) html += `<button onclick="loadReviews(${currentPage - 1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo; 上一页</button>`;
+                html += `<span class="text-xs text-gray-500">${currentPage} / ${totalPages}</span>`;
+                if (currentPage < totalPages) html += `<button onclick="loadReviews(${currentPage + 1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">下一页 &raquo;</button>`;
+                html += '</div>';
+                paginationContainer.innerHTML = html;
+            } else {
+                paginationContainer.innerHTML = '';
+            }
+        }
+    }
+
+    // ==================== Favorites ====================
+    async function checkFavoriteStatus() {
+        try {
+            const res = await fetch(`/api/favorites/${workerId}/check`, {
+                headers: authHeaders()
+            });
+            if (handle401(res)) return;
+            if (!res.ok) return;
+            const data = await res.json();
+            isFavorited = data.is_favorited;
+            updateFavoriteUI();
+        } catch(e) {
+            // silently fail
+        }
+    }
+
+    function updateFavoriteUI() {
+        const icon = document.getElementById('fav-icon');
+        const text = document.getElementById('fav-text');
+        const btn = document.getElementById('fav-btn');
+        if (!icon || !text || !btn) return;
+        if (isFavorited) {
+            icon.setAttribute('data-icon', 'mdi:heart');
+            icon.className = 'iconify mr-2 text-lg text-pink-500';
+            text.textContent = '已收藏';
+            text.className = 'text-pink-400';
+            btn.className = 'fav-btn w-full border border-pink-500/50 bg-pink-500/10 hover:border-pink-500 py-3 rounded-xl font-medium text-sm transition flex items-center justify-center mt-3';
+        } else {
+            icon.setAttribute('data-icon', 'mdi:heart-outline');
+            icon.className = 'iconify mr-2 text-lg';
+            text.textContent = '收藏';
+            text.className = '';
+            btn.className = 'fav-btn w-full border border-white/20 hover:border-pink-500 py-3 rounded-xl font-medium text-sm transition flex items-center justify-center mt-3';
+        }
+    }
+
+    async function toggleFavorite() {
+        const token = getToken();
+        if (!token) {
+            window.location.href = 'login.html';
+            return;
+        }
+        try {
+            if (isFavorited) {
+                const res = await fetch(`/api/favorites/${workerId}`, {
+                    method: 'DELETE',
+                    headers: authHeaders()
+                });
+                if (handle401(res)) return;
+                if (res.ok) {
+                    isFavorited = false;
+                    updateFavoriteUI();
+                }
+            } else {
+                const res = await fetch(`/api/favorites/${workerId}`, {
+                    method: 'POST',
+                    headers: authHeaders()
+                });
+                if (handle401(res)) return;
+                if (res.ok) {
+                    isFavorited = true;
+                    updateFavoriteUI();
+                }
+            }
+        } catch(e) {
+            // silently fail
+        }
+    }
+
+    // ==================== Recommendations ====================
+    async function loadRecommendations() {
+        const grid = document.getElementById('recommendations-grid');
+        if (!grid) return;
+        try {
+            const res = await fetch(`/api/recommendations?worker_id=${workerId}&limit=4`);
+            if (handle401(res)) return;
+            if (!res.ok) throw new Error('failed');
+            const data = await res.json();
+            renderRecommendations(data.workers || data.recommendations || []);
+        } catch(e) {
+            grid.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500">暂无推荐</div>';
+        }
+    }
+
+    function renderRecommendations(workers) {
+        const grid = document.getElementById('recommendations-grid');
+        if (!grid) return;
+        if (!workers || workers.length === 0) {
+            grid.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500">暂无推荐</div>';
+            return;
+        }
+        grid.innerHTML = workers.map(w => {
+            const st = statusMap[w.status] || statusMap.online;
+            return `
+            <a href="worker-detail.html?id=${esc(w.id)}" class="glass-morphism p-6 rounded-3xl card-hover border-transparent border-2 block cursor-pointer transition-all">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="relative">
+                        <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
+                            <span class="iconify text-3xl" data-icon="${esc(w.avatar_icon)}"></span>
+                        </div>
+                        <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#050714] ${st.bg}"></div>
+                    </div>
+                    <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. ${esc(w.level)}</span>
+                </div>
+                <h4 class="text-lg font-bold">${esc(w.name)}</h4>
+                <div class="flex items-center text-xs text-gray-400 mt-1 mb-2">
+                    <span class="iconify mr-1" data-icon="mdi:tag-outline"></span>${esc(w.category_name)}
+                </div>
+                <div class="flex flex-wrap gap-1 mb-4">
+                    ${(w.skills || []).slice(0, 3).map(sk => `<span class="bg-white/5 text-[10px] px-2 py-0.5 rounded text-gray-300">${esc(sk)}</span>`).join('')}
+                    ${(w.skills || []).length > 3 ? `<span class="text-[10px] text-gray-500">+${w.skills.length - 3}</span>` : ''}
+                </div>
+                <div class="flex items-center mb-3">
+                    ${renderStarsSmall(w.rating)}
+                    <span class="text-xs text-gray-500 ml-2">${esc(w.rating)}</span>
+                    <span class="text-xs text-gray-600 ml-auto">${esc(w.total_orders)} 次雇佣</span>
+                </div>
+                <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                    <div>
+                        <p class="text-xs text-gray-500">${esc(w.billing_unit)}</p>
+                        <p class="font-bold text-lg">￥${Number(w.hourly_rate).toFixed(2)}</p>
+                    </div>
+                    <span class="bg-cyan-500/20 hover:bg-cyan-500 group transition p-3 rounded-xl">
+                        <span class="iconify text-cyan-400 group-hover:text-black" data-icon="mdi:cart-plus"></span>
+                    </span>
+                </div>
+            </a>
+        `;
+        }).join('');
+    }
+
+    // ==================== Rental ====================
     function setDuration(e, hours) {
         document.getElementById('custom-hours').value = hours;
         document.querySelectorAll('.dur-btn').forEach(b => { b.classList.remove('border-[#6A0DAD]', 'bg-[#6A0DAD]/10'); b.classList.add('border-white/10'); });
