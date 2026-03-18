@@ -418,6 +418,9 @@ class TestSecurity:
 
     def test_rate_limiter_loaded(self, app_module):
         assert hasattr(app_module, "limiter")
+        default_limits = app_module.limiter.limit_manager._default_limits
+        assert len(default_limits) == 1
+        assert str(default_limits[0].limit_provider) == "9999/minute"
 
     def test_json_formatter(self, app_module):
         import logging
