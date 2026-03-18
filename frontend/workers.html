@@ -37,6 +37,7 @@
             <a class="hover:text-white transition" href="index.html">首页</a>
             <a class="text-white transition" href="workers.html">数职市场</a>
             <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="hover:text-white transition" href="my-agents.html">我的机器人</a>
         </div>
     </div>
     <div class="flex items-center space-x-4" id="nav-auth">
@@ -128,6 +129,7 @@
     let currentCategory = null;
     let currentKeyword = '';
     let currentWorkerType = null;
+    const initialParams = new URLSearchParams(window.location.search);
 
     const officialCopyMap = {
         support_responder: {
@@ -150,6 +152,9 @@
                 <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
                     <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>${user.username}
                 </a>
+                <a class="text-sm hover:text-white px-4 py-2 transition" href="my-agents.html">
+                    <span class="iconify inline mr-1" data-icon="mdi:rocket-launch-outline"></span>我的机器人
+                </a>
                 <a class="text-sm hover:text-white px-4 py-2 transition" href="orders.html">
                     <span class="iconify inline mr-1" data-icon="mdi:clipboard-list-outline"></span>我的订单
                 </a>
@@ -162,6 +167,17 @@
         localStorage.removeItem('xiaxia_token');
         localStorage.removeItem('xiaxia_user');
         window.location.reload();
+    }
+
+    function applyInitialFilters() {
+        const workerType = initialParams.get('worker_type');
+        const keyword = initialParams.get('keyword');
+        if (workerType) currentWorkerType = workerType;
+        if (keyword) {
+            currentKeyword = keyword.trim();
+            document.getElementById('search-input').value = currentKeyword;
+        }
+        syncWorkerTypeButtons();
     }
 
     function esc(value) {
@@ -258,17 +274,21 @@
     function filterWorkerType(workerType) {
         currentWorkerType = workerType;
         currentPage = 1;
+        syncWorkerTypeButtons();
+        loadWorkers();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function syncWorkerTypeButtons() {
         document.querySelectorAll('.quick-filter-btn').forEach(btn => {
             btn.classList.remove('quick-filter-active');
             btn.classList.add('text-gray-300');
         });
-        const target = workerType ? document.querySelector(`.quick-filter-btn[data-type="${workerType}"]`) : document.querySelector('.quick-filter-btn[data-type="all"]');
+        const target = currentWorkerType ? document.querySelector(`.quick-filter-btn[data-type="${currentWorkerType}"]`) : document.querySelector('.quick-filter-btn[data-type="all"]');
         if (target) {
             target.classList.add('quick-filter-active');
             target.classList.remove('text-gray-300');
         }
-        loadWorkers();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function presetKeyword(keyword) {
@@ -392,6 +412,7 @@
     function goPage(p) { currentPage = p; loadWorkers(); window.scrollTo({top: 0, behavior: 'smooth'}); }
 
     // 初始化
+    applyInitialFilters();
     loadCategories();
     loadOfficialAgents();
     loadWorkers();

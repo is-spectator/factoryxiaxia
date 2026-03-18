@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>我的机器人 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .deployment-active { border-color: rgba(34,211,238,0.45); background: linear-gradient(135deg, rgba(34,211,238,0.08), rgba(59,130,246,0.08)); }
+        .filter-active { background: rgba(34,211,238,0.12); border-color: rgba(34,211,238,0.3); color: #fff; }
+        .btn-primary { background: linear-gradient(135deg, #22d3ee, #3b82f6); color: #04111d; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 24px rgba(34,211,238,0.3); }
+        .btn-secondary:hover { border-color: rgba(34,211,238,0.35); }
+        .status-badge-active { background: rgba(34,197,94,0.12); color: #86efac; border-color: rgba(34,197,94,0.25); }
+        .status-badge-pending { background: rgba(59,130,246,0.12); color: #93c5fd; border-color: rgba(59,130,246,0.25); }
+        .status-badge-review { background: rgba(251,191,36,0.12); color: #fcd34d; border-color: rgba(251,191,36,0.25); }
+        .status-badge-stopped { background: rgba(156,163,175,0.12); color: #d1d5db; border-color: rgba(156,163,175,0.25); }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-cyan-400" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="text-white transition" href="my-agents.html">我的机器人</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+    </div>
+</nav>
+
+<main class="pt-28 pb-20 px-6 max-w-7xl mx-auto">
+    <div id="page-content" class="text-center py-24 text-gray-500">加载机器人控制台中...</div>
+</main>
+
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+const state = {
+    deployments: [],
+    metricsMap: {},
+    selectedId: null,
+    selectedDetail: null,
+    selectedMetrics: null,
+    selectedSessions: [],
+    currentFilter: 'all',
+    lastTestResult: null,
+};
+
+const deploymentStatusMap = {
+    active: { label: '运行中', cls: 'status-badge-active' },
+    pending_setup: { label: '待配置', cls: 'status-badge-pending' },
+    pending_review: { label: '待审核', cls: 'status-badge-review' },
+    suspended: { label: '已暂停', cls: 'status-badge-stopped' },
+    expired: { label: '已到期', cls: 'status-badge-stopped' },
+};
+
+const sessionStatusMap = {
+    open: '会话中',
+    handoff_requested: '待转人工',
+    closed: '已关闭',
+};
+
+(function() {
+    const userStr = localStorage.getItem('xiaxia_user');
+    if (!token || !userStr) return;
+    try {
+        const user = JSON.parse(userStr);
+        document.getElementById('nav-auth').innerHTML = `
+            <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
+                <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>${esc(user.username)}
+            </a>
+            <a class="text-sm hover:text-white px-4 py-2 transition" href="orders.html">
+                <span class="iconify inline mr-1" data-icon="mdi:clipboard-list-outline"></span>我的订单
+            </a>
+            <button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>
+        `;
+    } catch (error) {
+        // Ignore malformed local storage.
+    }
+})();
+
+function logout() {
+    localStorage.removeItem('xiaxia_token');
+    localStorage.removeItem('xiaxia_user');
+    window.location.href = 'login.html';
+}
+
+function authHeaders(extra) {
+    return Object.assign({ 'Authorization': 'Bearer ' + token }, extra || {});
+}
+
+function toast(msg, ok) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
+function esc(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+}
+
+function formatDate(iso) {
+    if (!iso) return '--';
+    return new Date(iso).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function formatRelative(iso) {
+    if (!iso) return '--';
+    const date = new Date(iso);
+    const diff = (Date.now() - date.getTime()) / 1000;
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+}
+
+function getStatusMeta(status) {
+    return deploymentStatusMap[status] || { label: status || '未知', cls: 'status-badge-stopped' };
+}
+
+function buildEndpoint(deployment) {
+    if (!deployment || !deployment.public_token) return '';
+    return `${window.location.origin}/api/public/chat/${deployment.public_token}/message`;
+}
+
+async function fetchJson(url, options) {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.href = 'login.html';
+        throw new Error('unauthorized');
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(data.error || data.message || '请求失败');
+    }
+    return data;
+}
+
+function aggregateSummary() {
+    const deployments = state.deployments || [];
+    const metricsList = deployments.map(item => state.metricsMap[item.id] || {});
+    const activeCount = deployments.filter(item => item.status === 'active').length;
+    const totalMessages = metricsList.reduce((sum, item) => sum + (item.messages_in || 0), 0);
+    const totalHandoffs = metricsList.reduce((sum, item) => sum + (item.open_handoff_total || 0), 0);
+    const confidenceValues = metricsList.map(item => item.avg_confidence).filter(value => typeof value === 'number' && value > 0);
+    const avgConfidence = confidenceValues.length
+        ? (confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length)
+        : 0;
+    return {
+        totalDeployments: deployments.length,
+        activeCount,
+        totalMessages,
+        totalHandoffs,
+        avgConfidence,
+    };
+}
+
+function renderEmptyState() {
+    document.getElementById('page-content').innerHTML = `
+        <div class="card max-w-3xl mx-auto p-10 text-center">
+            <span class="iconify text-7xl text-cyan-400 mx-auto mb-5 inline-block" data-icon="mdi:robot-outline"></span>
+            <h1 class="text-3xl font-bold mb-3">你还没有可管理的机器人</h1>
+            <p class="text-gray-400 leading-7 max-w-xl mx-auto mb-8">
+                去官方数字员工专区购买一个可部署机器人。支付完成后，你就可以在这里查看配置、知识库、会话和 API token。
+            </p>
+            <div class="flex flex-wrap justify-center gap-3">
+                <a href="workers.html?worker_type=agent_service" class="btn-primary px-6 py-3 rounded-2xl font-bold transition inline-flex items-center">
+                    <span class="iconify mr-2" data-icon="mdi:storefront-outline"></span>去选官方机器人
+                </a>
+                <a href="orders.html" class="btn-secondary border border-white/15 px-6 py-3 rounded-2xl font-bold transition inline-flex items-center">
+                    <span class="iconify mr-2" data-icon="mdi:clipboard-list-outline"></span>查看我的订单
+                </a>
+            </div>
+        </div>
+    `;
+}
+
+function renderSummaryCards() {
+    const summary = aggregateSummary();
+    return `
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+            <div class="card p-5">
+                <p class="text-xs text-gray-500 mb-1">机器人实例</p>
+                <p class="text-3xl font-bold">${summary.totalDeployments}</p>
+            </div>
+            <div class="card p-5">
+                <p class="text-xs text-gray-500 mb-1">运行中机器人</p>
+                <p class="text-3xl font-bold text-green-300">${summary.activeCount}</p>
+            </div>
+            <div class="card p-5">
+                <p class="text-xs text-gray-500 mb-1">累计会话消息</p>
+                <p class="text-3xl font-bold text-cyan-300">${summary.totalMessages}</p>
+            </div>
+            <div class="card p-5">
+                <p class="text-xs text-gray-500 mb-1">平均置信度</p>
+                <p class="text-3xl font-bold text-yellow-300">${summary.avgConfidence ? `${Math.round(summary.avgConfidence * 100)}%` : '--'}</p>
+            </div>
+        </div>
+    `;
+}
+
+function getFilteredDeployments() {
+    if (state.currentFilter === 'all') return state.deployments;
+    return state.deployments.filter(item => item.status === state.currentFilter);
+}
+
+function renderFilterButtons() {
+    const filters = [
+        { key: 'all', label: '全部' },
+        { key: 'active', label: '运行中' },
+        { key: 'pending_setup', label: '待配置' },
+        { key: 'suspended', label: '已暂停' },
+    ];
+    return filters.map(item => `
+        <button onclick="setDeploymentFilter('${item.key}')" class="px-4 py-2 rounded-full text-sm border transition ${state.currentFilter === item.key ? 'filter-active' : 'border-white/10 text-gray-400 hover:border-cyan-400/30 hover:text-white'}">
+            ${item.label}
+        </button>
+    `).join('');
+}
+
+function renderDeploymentList() {
+    const deployments = getFilteredDeployments();
+    if (!deployments.length) {
+        return '<div class="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-gray-500">当前筛选下没有机器人实例。</div>';
+    }
+    return deployments.map(item => {
+        const meta = getStatusMeta(item.status);
+        const selected = String(item.id) === String(state.selectedId);
+        const metrics = state.metricsMap[item.id] || {};
+        return `
+            <button onclick="selectDeployment(${item.id})" class="w-full text-left rounded-3xl border p-5 transition ${selected ? 'deployment-active' : 'border-white/10 hover:border-cyan-400/25 hover:bg-white/5'}">
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <p class="text-lg font-bold">${esc(item.deployment_name)}</p>
+                        <p class="text-xs text-gray-500 mt-1">${esc(item.worker_name || '官方机器人')} · ${esc(item.organization_name || '默认团队')}</p>
+                    </div>
+                    <span class="text-[11px] px-3 py-1 rounded-full border ${meta.cls}">${meta.label}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-3 text-xs text-gray-400">
+                    <div>
+                        <p class="text-gray-500 mb-1">套餐</p>
+                        <p class="text-white">${esc(item.service_plan_name || '--')}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 mb-1">近期开口</p>
+                        <p class="text-white">${metrics.messages_in || 0} 条</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 mb-1">渠道</p>
+                        <p class="text-white">${esc(item.channel_type || '--')}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 mb-1">到期时间</p>
+                        <p class="text-white">${formatDate(item.expires_at)}</p>
+                    </div>
+                </div>
+            </button>
+        `;
+    }).join('');
+}
+
+function renderKnowledgeBases(detail) {
+    const knowledgeBases = (detail && detail.knowledge_bases) || [];
+    if (!knowledgeBases.length) {
+        return '<div class="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-gray-500">还没有知识库，去部署向导上传第一篇文档。</div>';
+    }
+    return knowledgeBases.map(item => `
+        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
+                <div>
+                    <p class="font-bold">${esc(item.name)}</p>
+                    <p class="text-xs text-gray-500 mt-1">${esc(item.description || '暂无描述')}</p>
+                </div>
+                <span class="text-[11px] px-3 py-1 rounded-full border ${item.status === 'active' ? 'status-badge-active' : 'status-badge-pending'}">${esc(item.status)}</span>
+            </div>
+            <div class="flex flex-wrap gap-3 text-xs text-gray-400">
+                <span>文档总数 ${item.document_count}</span>
+                <span>已发布 ${item.published_document_count}</span>
+                <span>${item.published_at ? `发布时间 ${formatDate(item.published_at)}` : '尚未发布'}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderSessions() {
+    if (!state.selectedSessions.length) {
+        return '<div class="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-gray-500">还没有客户会话，可以先发送一条测试消息。</div>';
+    }
+    return state.selectedSessions.map(session => {
+        const messages = session.messages || [];
+        const latestMessage = messages[messages.length - 1];
+        const latestAssistant = [...messages].reverse().find(item => item.role === 'assistant');
+        return `
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                    <div>
+                        <p class="font-bold">${esc(session.visitor_name || '匿名访客')}</p>
+                        <p class="text-xs text-gray-500 mt-1">${esc(sessionStatusMap[session.status] || session.status)} · ${formatRelative(session.updated_at)}</p>
+                    </div>
+                    <div class="text-right text-xs text-gray-400">
+                        <p>消息数 ${session.message_count}</p>
+                        <p>${session.last_confidence != null ? `置信度 ${Math.round(session.last_confidence * 100)}%` : '暂无置信度'}</p>
+                    </div>
+                </div>
+                <div class="space-y-3 text-sm">
+                    ${latestMessage ? `
+                        <div>
+                            <p class="text-xs text-gray-500 mb-1">最近一条消息</p>
+                            <p class="text-gray-200 leading-7">${esc(latestMessage.content)}</p>
+                        </div>
+                    ` : ''}
+                    ${latestAssistant ? `
+                        <div>
+                            <p class="text-xs text-gray-500 mb-1">最近一条机器人回复</p>
+                            <p class="text-cyan-100 leading-7">${esc(latestAssistant.content)}</p>
+                        </div>
+                    ` : ''}
+                    ${session.needs_handoff ? `<p class="text-xs text-orange-300">转人工原因：${esc(session.handoff_reason || '系统判定')}</p>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderTestPanel(detail) {
+    const endpoint = buildEndpoint(detail);
+    const canTest = detail && detail.status === 'active';
+    return `
+        <div class="card p-6">
+            <div class="flex items-center justify-between gap-4 mb-5">
+                <div>
+                    <h3 class="text-lg font-bold">控制台测试</h3>
+                    <p class="text-sm text-gray-400 mt-1">直接从后台发一条测试消息，验证机器人是否能按知识库正常回复。</p>
+                </div>
+                <span class="text-[11px] px-3 py-1 rounded-full border ${canTest ? 'status-badge-active' : 'status-badge-pending'}">${canTest ? '可测试' : '未发布'}</span>
+            </div>
+            <div class="space-y-4">
+                <textarea id="test-message" rows="4" placeholder="例如：你好，请告诉我退款政策" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400 resize-none ${canTest ? '' : 'opacity-50'}" ${canTest ? '' : 'disabled'}></textarea>
+                <div class="flex flex-wrap gap-3">
+                    <button onclick="sendTestMessage()" id="test-message-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${canTest ? '' : 'opacity-50 pointer-events-none'}">发送测试消息</button>
+                    <button onclick="fillTestMessage()" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition ${canTest ? '' : 'opacity-50 pointer-events-none'}">填入示例</button>
+                    ${endpoint ? `<button data-copy="${encodeURIComponent(endpoint)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition">复制 API Endpoint</button>` : ''}
+                </div>
+                ${state.lastTestResult ? `
+                    <div class="rounded-2xl border border-cyan-400/15 bg-cyan-400/5 p-5">
+                        <p class="text-xs text-gray-500 mb-2">最近一次测试回复</p>
+                        <p class="text-sm leading-7 text-cyan-50">${esc(state.lastTestResult.assistant_message.content)}</p>
+                        <p class="text-xs text-gray-500 mt-3">Session #${state.lastTestResult.session.id} · ${formatDate(state.lastTestResult.assistant_message.created_at)}</p>
+                    </div>
+                ` : `
+                    <div class="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-gray-500">
+                        ${canTest ? '发送一条测试消息后，这里会显示机器人回复。' : '机器人尚未发布，暂时不能发送测试消息。'}
+                    </div>
+                `}
+            </div>
+        </div>
+    `;
+}
+
+function renderSelectedPanel() {
+    const detail = state.selectedDetail;
+    if (!detail) {
+        return '<div class="card p-8 text-center text-gray-500">请选择左侧一个机器人实例。</div>';
+    }
+    const statusMeta = getStatusMeta(detail.status);
+    const metrics = state.selectedMetrics || {};
+    const endpoint = buildEndpoint(detail);
+    return `
+        <div class="space-y-6">
+            <div class="card p-7">
+                <div class="flex flex-col xl:flex-row xl:items-start justify-between gap-6">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-3 mb-3">
+                            <h2 class="text-3xl font-bold">${esc(detail.deployment_name)}</h2>
+                            <span class="text-[11px] px-3 py-1 rounded-full border ${statusMeta.cls}">${statusMeta.label}</span>
+                        </div>
+                        <p class="text-gray-400 leading-7 max-w-3xl">
+                            ${esc(detail.worker_name || '官方机器人')} · ${esc(detail.organization_name || '默认团队')} · ${esc(detail.service_plan_name || '官方套餐')}
+                        </p>
+                        <div class="flex flex-wrap gap-3 text-xs text-gray-500 mt-4">
+                            <span>创建于 ${formatDate(detail.created_at)}</span>
+                            <span>到期时间 ${formatDate(detail.expires_at)}</span>
+                            <span>渠道 ${esc(detail.channel_type || '--')}</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                        <a href="deployment-setup.html?deployment_id=${detail.id}" class="btn-primary px-5 py-3 rounded-2xl font-bold transition inline-flex items-center">
+                            <span class="iconify mr-2" data-icon="mdi:tune-variant"></span>进入部署向导
+                        </a>
+                        <a href="order-detail.html?order_id=${detail.order_id}" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition inline-flex items-center">
+                            <span class="iconify mr-2" data-icon="mdi:clipboard-list-outline"></span>查看订单
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div class="card p-5">
+                    <p class="text-xs text-gray-500 mb-1">会话总数</p>
+                    <p class="text-3xl font-bold text-cyan-300">${metrics.sessions_total || 0}</p>
+                </div>
+                <div class="card p-5">
+                    <p class="text-xs text-gray-500 mb-1">累计消息</p>
+                    <p class="text-3xl font-bold">${metrics.messages_in || 0}</p>
+                </div>
+                <div class="card p-5">
+                    <p class="text-xs text-gray-500 mb-1">待处理转人工</p>
+                    <p class="text-3xl font-bold text-orange-300">${metrics.open_handoff_total || 0}</p>
+                </div>
+                <div class="card p-5">
+                    <p class="text-xs text-gray-500 mb-1">知识命中</p>
+                    <p class="text-3xl font-bold text-green-300">${metrics.knowledge_hits || 0}</p>
+                </div>
+            </div>
+
+            <div class="grid xl:grid-cols-3 gap-6">
+                <div class="xl:col-span-2 space-y-6">
+                    <div class="card p-6">
+                        <div class="flex items-center justify-between gap-4 mb-5">
+                            <div>
+                                <h3 class="text-lg font-bold">知识库概览</h3>
+                                <p class="text-sm text-gray-400 mt-1">查看当前上线的知识资源和文档数量。</p>
+                            </div>
+                            <a href="deployment-setup.html?deployment_id=${detail.id}" class="text-sm text-cyan-300 hover:text-cyan-200 transition">去维护知识库</a>
+                        </div>
+                        <div class="space-y-3">${renderKnowledgeBases(detail)}</div>
+                    </div>
+
+                    <div class="card p-6">
+                        <div class="flex items-center justify-between gap-4 mb-5">
+                            <div>
+                                <h3 class="text-lg font-bold">最近会话</h3>
+                                <p class="text-sm text-gray-400 mt-1">展示最近 5 个会话，方便快速判断机器人当前表现。</p>
+                            </div>
+                            <button onclick="refreshSelected()" class="text-sm text-cyan-300 hover:text-cyan-200 transition">刷新</button>
+                        </div>
+                        <div class="space-y-3">${renderSessions()}</div>
+                    </div>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="card p-6">
+                        <h3 class="text-lg font-bold mb-5">API 交付信息</h3>
+                        <div class="space-y-4 text-sm">
+                            <div>
+                                <p class="text-xs text-gray-500 mb-2">公开 Token</p>
+                                <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${detail.public_token ? esc(detail.public_token) : '尚未生成'}</div>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-2">公开 Endpoint</p>
+                                <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${endpoint ? esc(endpoint) : '发布后可用'}</div>
+                            </div>
+                            <div class="flex flex-wrap gap-3">
+                                ${detail.public_token ? `<button data-copy="${encodeURIComponent(detail.public_token)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">复制 Token</button>` : ''}
+                                ${endpoint ? `<button data-copy="${encodeURIComponent(endpoint)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">复制 Endpoint</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card p-6">
+                        <h3 class="text-lg font-bold mb-5">当前配置</h3>
+                        <div class="space-y-4 text-sm">
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">企业名称</p>
+                                <p>${esc((detail.config && detail.config.business_name) || detail.deployment_name)}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">品牌语气</p>
+                                <p>${esc((detail.config && detail.config.brand_voice) || 'professional')}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">禁答话题</p>
+                                <p class="text-gray-300">${(detail.config && detail.config.forbidden_topics && detail.config.forbidden_topics.length) ? esc(detail.config.forbidden_topics.join(', ')) : '暂无'}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">敏感关键词</p>
+                                <p class="text-gray-300">${(detail.config && detail.config.sensitive_keywords && detail.config.sensitive_keywords.length) ? esc(detail.config.sensitive_keywords.join(', ')) : '暂无'}</p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                                    PII 脱敏: ${(detail.config && detail.config.pii_masking_enabled) ? '开启' : '关闭'}
+                                </div>
+                                <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                                    命中隐私自动转人工: ${(detail.config && detail.config.handoff_on_pii) ? '开启' : '关闭'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${renderTestPanel(detail)}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderPage() {
+    if (!state.deployments.length) {
+        renderEmptyState();
+        return;
+    }
+
+    document.getElementById('page-content').innerHTML = `
+        <div class="flex flex-col xl:flex-row xl:items-end justify-between gap-6 mb-6">
+            <div>
+                <p class="inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full bg-cyan-400/10 border border-cyan-400/20 text-cyan-300 uppercase tracking-[0.24em] mb-4">
+                    <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方机器人管理台
+                </p>
+                <h1 class="text-4xl font-bold mb-3">我的机器人</h1>
+                <p class="text-gray-400 max-w-3xl">管理已购买的官方数字员工，查看知识库、会话表现、转人工情况和公开 API 交付信息。</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <a href="workers.html?worker_type=agent_service" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition inline-flex items-center">
+                    <span class="iconify mr-2" data-icon="mdi:storefront-outline"></span>继续购买机器人
+                </a>
+                <a href="deployment-setup.html?deployment_id=${state.selectedId || state.deployments[0].id}" class="btn-primary px-5 py-3 rounded-2xl font-bold transition inline-flex items-center">
+                    <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>继续配置当前机器人
+                </a>
+            </div>
+        </div>
+
+        ${renderSummaryCards()}
+
+        <div class="grid xl:grid-cols-[360px_minmax(0,1fr)] gap-6">
+            <div class="space-y-4">
+                <div class="card p-5">
+                    <div class="flex items-center justify-between gap-4 mb-4">
+                        <h2 class="text-lg font-bold">机器人列表</h2>
+                        <button onclick="refreshAll()" class="text-sm text-cyan-300 hover:text-cyan-200 transition">刷新</button>
+                    </div>
+                    <div class="flex flex-wrap gap-2 mb-4">
+                        ${renderFilterButtons()}
+                    </div>
+                    <div class="space-y-3">${renderDeploymentList()}</div>
+                </div>
+            </div>
+            <div id="selected-panel">${renderSelectedPanel()}</div>
+        </div>
+    `;
+}
+
+function setDeploymentFilter(filter) {
+    state.currentFilter = filter;
+    renderPage();
+}
+
+async function loadDeploymentMetrics(deploymentId) {
+    const data = await fetchJson(`/api/chat/${deploymentId}/metrics`, { headers: authHeaders() });
+    state.metricsMap[deploymentId] = data.metrics || {};
+    return data.metrics || {};
+}
+
+async function loadSelectedBundle(deploymentId) {
+    const [detailData, metricsData, sessionsData] = await Promise.all([
+        fetchJson(`/api/deployments/${deploymentId}`, { headers: authHeaders() }),
+        fetchJson(`/api/chat/${deploymentId}/metrics`, { headers: authHeaders() }),
+        fetchJson(`/api/chat/${deploymentId}/sessions?per_page=5&include_messages=1`, { headers: authHeaders() }),
+    ]);
+    state.selectedId = deploymentId;
+    state.selectedDetail = detailData.deployment;
+    state.selectedMetrics = metricsData.metrics || {};
+    state.selectedSessions = sessionsData.sessions || [];
+    state.metricsMap[deploymentId] = state.selectedMetrics;
+}
+
+async function selectDeployment(deploymentId) {
+    try {
+        await loadSelectedBundle(deploymentId);
+        state.lastTestResult = null;
+        renderPage();
+    } catch (error) {
+        if (error.message !== 'unauthorized') {
+            toast(error.message || '加载机器人详情失败', false);
+        }
+    }
+}
+
+async function refreshSelected() {
+    if (!state.selectedId) return;
+    await selectDeployment(state.selectedId);
+}
+
+async function refreshAll() {
+    await init();
+}
+
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        toast('已复制到剪贴板', true);
+    } catch (error) {
+        toast('复制失败，请手动复制', false);
+    }
+}
+
+function copyFromEncoded(button) {
+    const encoded = button && button.dataset ? button.dataset.copy : '';
+    copyText(decodeURIComponent(encoded || ''));
+}
+
+function fillTestMessage() {
+    const input = document.getElementById('test-message');
+    if (input) input.value = '你好，请告诉我退款政策和人工客服处理时效。';
+}
+
+async function sendTestMessage() {
+    if (!state.selectedId || !state.selectedDetail || state.selectedDetail.status !== 'active') return;
+    const input = document.getElementById('test-message');
+    const message = (input.value || '').trim();
+    if (!message) {
+        toast('请先输入测试消息', false);
+        return;
+    }
+    const btn = document.getElementById('test-message-btn');
+    btn.disabled = true;
+    btn.textContent = '发送中...';
+    try {
+        const data = await fetchJson(`/api/chat/${state.selectedId}/message`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                message,
+                visitor_name: '控制台测试',
+                channel_type: state.selectedDetail.channel_type || 'web_widget',
+            }),
+        });
+        state.lastTestResult = data;
+        input.value = '';
+        await loadSelectedBundle(state.selectedId);
+        renderPage();
+        toast('测试消息发送成功', true);
+    } catch (error) {
+        toast(error.message || '发送测试消息失败', false);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '发送测试消息';
+    }
+}
+
+async function init() {
+    try {
+        const deploymentsData = await fetchJson('/api/deployments', { headers: authHeaders() });
+        state.deployments = deploymentsData.deployments || [];
+        if (!state.deployments.length) {
+            renderEmptyState();
+            return;
+        }
+
+        await Promise.all(state.deployments.map(async item => {
+            try {
+                await loadDeploymentMetrics(item.id);
+            } catch (error) {
+                state.metricsMap[item.id] = {};
+            }
+        }));
+
+        const params = new URLSearchParams(window.location.search);
+        const targetId = parseInt(params.get('deployment_id'), 10);
+        const initial = state.deployments.find(item => item.id === targetId) || state.deployments[0];
+        await loadSelectedBundle(initial.id);
+        renderPage();
+    } catch (error) {
+        if (error.message !== 'unauthorized') {
+            document.getElementById('page-content').innerHTML = `<div class="text-center py-24 text-red-400">${esc(error.message || '机器人管理台加载失败')}</div>`;
+        }
+    }
+}
+
+init();
+</script>
+</body>
+</html>

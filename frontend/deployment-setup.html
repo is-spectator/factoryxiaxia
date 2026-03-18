@@ -32,6 +32,7 @@
         <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
             <a class="hover:text-white transition" href="workers.html">数职市场</a>
             <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="hover:text-white transition" href="my-agents.html">我的机器人</a>
             <a class="text-white transition" href="deployment-setup.html">部署向导</a>
         </div>
     </div>
@@ -490,21 +491,21 @@ function renderWizard() {
                             <div>
                                 <div class="flex items-center justify-between gap-3 mb-2">
                                     <p class="text-sm font-bold">公开 API Endpoint</p>
-                                    <button onclick="copyText('${esc(apiExample.endpoint)}')" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
+                                    <button data-copy="${encodeURIComponent(apiExample.endpoint)}" onclick="copyFromEncoded(this)" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
                                 </div>
                                 <div class="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-xs break-all text-cyan-200">${esc(apiExample.endpoint)}</div>
                             </div>
                             <div>
                                 <div class="flex items-center justify-between gap-3 mb-2">
                                     <p class="text-sm font-bold">cURL 示例</p>
-                                    <button onclick="copyText(${JSON.stringify(apiExample.curl)})" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
+                                    <button data-copy="${encodeURIComponent(apiExample.curl)}" onclick="copyFromEncoded(this)" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
                                 </div>
                                 <pre class="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-xs overflow-x-auto text-gray-200 whitespace-pre-wrap">${esc(apiExample.curl)}</pre>
                             </div>
                             <div>
                                 <div class="flex items-center justify-between gap-3 mb-2">
                                     <p class="text-sm font-bold">前端调用示例</p>
-                                    <button onclick="copyText(${JSON.stringify(apiExample.fetch)})" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
+                                    <button data-copy="${encodeURIComponent(apiExample.fetch)}" onclick="copyFromEncoded(this)" class="text-xs text-cyan-300 hover:text-cyan-200 transition">复制</button>
                                 </div>
                                 <pre class="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-xs overflow-x-auto text-gray-200 whitespace-pre-wrap">${esc(apiExample.fetch)}</pre>
                             </div>
@@ -690,6 +691,11 @@ async function copyText(text) {
     } catch (error) {
         toast('复制失败，请手动复制', false);
     }
+}
+
+function copyFromEncoded(button) {
+    const encoded = button && button.dataset ? button.dataset.copy : '';
+    copyText(decodeURIComponent(encoded || ''));
 }
 
 async function init() {

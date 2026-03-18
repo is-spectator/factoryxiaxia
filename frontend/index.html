@@ -52,6 +52,7 @@
             <a class="text-white transition" href="index.html">首页</a>
             <a class="hover:text-white transition" href="workers.html">数职市场</a>
             <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="hover:text-white transition" href="my-agents.html">我的机器人</a>
         </div>
     </div>
     <div class="flex items-center space-x-4" id="nav-auth">
@@ -548,6 +549,10 @@
                 <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
                     <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>
                     ${user.username}
+                </a>
+                <a class="text-sm hover:text-white px-4 py-2 transition" href="my-agents.html">
+                    <span class="iconify inline mr-1" data-icon="mdi:rocket-launch-outline"></span>
+                    我的机器人
                 </a>
                 <button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>
             `;
