@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>部署配置 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .btn-glow:hover { box-shadow: 0 0 20px rgba(106,13,173,0.6); transform: translateY(-2px); }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; max-width: 360px; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .input-field { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.75rem; padding: 0.75rem 1rem; font-size: 0.875rem; color: #fff; outline: none; transition: border-color 0.2s; }
+        .input-field::placeholder { color: rgba(255,255,255,0.25); }
+        .input-field:focus { border-color: rgba(106,13,173,0.5); }
+        .input-field:disabled { opacity: 0.5; cursor: not-allowed; }
+        textarea.input-field { resize: vertical; min-height: 80px; }
+        .step-dot { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; font-weight: 700; transition: all 0.3s; flex-shrink: 0; }
+        .step-dot.inactive { background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); }
+        .step-dot.active { background: linear-gradient(135deg, #6A0DAD, #8A2BE2); border: 2px solid #8A2BE2; color: #fff; box-shadow: 0 0 20px rgba(106,13,173,0.4); }
+        .step-dot.done { background: rgba(34,197,94,0.15); border: 2px solid rgba(34,197,94,0.4); color: #22c55e; }
+        .step-line { height: 2px; flex-grow: 1; transition: background 0.3s; }
+        .step-line.inactive { background: rgba(255,255,255,0.06); }
+        .step-line.done { background: linear-gradient(90deg, #22c55e, rgba(34,197,94,0.2)); }
+        .faq-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 0.75rem; padding: 1rem; position: relative; transition: border-color 0.2s; }
+        .faq-card:hover { border-color: rgba(106,13,173,0.3); }
+        .tone-option { cursor: pointer; padding: 0.75rem 1rem; border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); transition: all 0.2s; text-align: center; }
+        .tone-option:hover { border-color: rgba(106,13,173,0.4); }
+        .tone-option.selected { border-color: #6A0DAD; background: rgba(106,13,173,0.15); }
+        .review-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.875rem; }
+        .review-row:last-child { border-bottom: none; }
+        .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+</nav>
+
+<main class="pt-24 pb-16 px-4 max-w-3xl mx-auto">
+    <!-- Loading -->
+    <div id="loading" class="text-center py-20 text-gray-500">
+        <span class="spinner mb-3 mx-auto block" style="width:32px;height:32px;border-width:3px;"></span>
+        加载部署信息...
+    </div>
+
+    <!-- Error -->
+    <div id="error-view" class="hidden text-center py-20">
+        <span class="iconify text-5xl text-red-400 mx-auto mb-4" data-icon="mdi:alert-circle-outline"></span>
+        <p id="error-msg" class="text-gray-400 mb-6"></p>
+        <a href="orders.html" class="inline-block bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-3 rounded-xl text-sm font-bold transition-all btn-glow">返回订单列表</a>
+    </div>
+
+    <!-- Wizard Content -->
+    <div id="content" class="hidden">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-2xl font-bold mb-1">部署配置向导</h1>
+            <p class="text-sm text-gray-500">配置您的数字员工，完成后提交审核即可上线</p>
+        </div>
+
+        <!-- Step Indicator -->
+        <div class="flex items-center mb-10 px-2">
+            <div class="step-dot active" data-step-dot="1">1</div>
+            <div class="step-line inactive" data-step-line="1"></div>
+            <div class="step-dot inactive" data-step-dot="2">2</div>
+            <div class="step-line inactive" data-step-line="2"></div>
+            <div class="step-dot inactive" data-step-dot="3">3</div>
+            <div class="step-line inactive" data-step-line="3"></div>
+            <div class="step-dot inactive" data-step-dot="4">4</div>
+        </div>
+        <div class="flex justify-between text-[10px] text-gray-500 mb-8 px-0" id="step-labels">
+            <span class="w-[60px] text-center">命名机器人</span>
+            <span class="w-[60px] text-center">知识库</span>
+            <span class="w-[60px] text-center">品牌设置</span>
+            <span class="w-[60px] text-center">审核提交</span>
+        </div>
+
+        <!-- Step 1: Name -->
+        <div id="step-1" class="card p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <span class="iconify text-2xl text-[#6A0DAD]" data-icon="mdi:robot-happy-outline"></span>
+                <h2 class="text-lg font-bold">为您的机器人命名</h2>
+            </div>
+            <p class="text-sm text-gray-400 mb-6">给您的智能客服取一个好记的名字，用户将看到这个名称。</p>
+            <div class="mb-6">
+                <label class="block text-xs text-gray-500 mb-2">机器人名称 <span class="text-red-400">*</span></label>
+                <input id="deployment-name" type="text" class="input-field" placeholder="例如：小虾客服、AI助手" maxlength="50" />
+                <p class="text-[10px] text-gray-600 mt-2">2-50个字符，支持中英文</p>
+            </div>
+            <div class="flex justify-end">
+                <button onclick="goStep(2)" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-8 py-3 rounded-xl text-sm font-bold transition-all btn-glow flex items-center gap-2">
+                    下一步 <span class="iconify" data-icon="mdi:arrow-right"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Knowledge Base -->
+        <div id="step-2" class="card p-8 hidden">
+            <div class="flex items-center gap-3 mb-6">
+                <span class="iconify text-2xl text-[#6A0DAD]" data-icon="mdi:book-open-page-variant-outline"></span>
+                <h2 class="text-lg font-bold">上传知识库</h2>
+            </div>
+            <p class="text-sm text-gray-400 mb-6">添加常见问题（FAQ），机器人将根据这些知识回答用户问题。至少添加一条。</p>
+
+            <div id="faq-list" class="space-y-4 mb-6"></div>
+
+            <button onclick="addFaqItem()" class="w-full border border-dashed border-white/10 hover:border-[#6A0DAD]/40 rounded-xl py-3 text-sm text-gray-400 hover:text-white transition flex items-center justify-center gap-2">
+                <span class="iconify" data-icon="mdi:plus-circle-outline"></span> 添加FAQ条目
+            </button>
+
+            <div class="flex justify-between mt-8">
+                <button onclick="goStep(1)" class="border border-white/10 hover:bg-white/5 px-6 py-3 rounded-xl text-sm font-bold transition flex items-center gap-2">
+                    <span class="iconify" data-icon="mdi:arrow-left"></span> 上一步
+                </button>
+                <button onclick="goStep(3)" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-8 py-3 rounded-xl text-sm font-bold transition-all btn-glow flex items-center gap-2">
+                    下一步 <span class="iconify" data-icon="mdi:arrow-right"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Brand Settings -->
+        <div id="step-3" class="card p-8 hidden">
+            <div class="flex items-center gap-3 mb-6">
+                <span class="iconify text-2xl text-[#6A0DAD]" data-icon="mdi:palette-outline"></span>
+                <h2 class="text-lg font-bold">品牌设置</h2>
+            </div>
+            <p class="text-sm text-gray-400 mb-6">配置机器人的品牌个性与安全规则。</p>
+
+            <div class="space-y-6">
+                <!-- Brand Name -->
+                <div>
+                    <label class="block text-xs text-gray-500 mb-2">品牌名称 <span class="text-red-400">*</span></label>
+                    <input id="brand-name" type="text" class="input-field" placeholder="您的公司或品牌名称" maxlength="100" />
+                </div>
+
+                <!-- Brand Tone -->
+                <div>
+                    <label class="block text-xs text-gray-500 mb-3">语气风格 <span class="text-red-400">*</span></label>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="tone-options">
+                        <div class="tone-option selected" data-tone="professional" onclick="selectTone(this)">
+                            <span class="iconify text-xl mb-1 block mx-auto" data-icon="mdi:briefcase-outline"></span>
+                            <span class="text-xs font-medium">专业正式</span>
+                        </div>
+                        <div class="tone-option" data-tone="friendly" onclick="selectTone(this)">
+                            <span class="iconify text-xl mb-1 block mx-auto" data-icon="mdi:hand-wave-outline"></span>
+                            <span class="text-xs font-medium">亲切友好</span>
+                        </div>
+                        <div class="tone-option" data-tone="humorous" onclick="selectTone(this)">
+                            <span class="iconify text-xl mb-1 block mx-auto" data-icon="mdi:emoticon-happy-outline"></span>
+                            <span class="text-xs font-medium">幽默风趣</span>
+                        </div>
+                        <div class="tone-option" data-tone="concise" onclick="selectTone(this)">
+                            <span class="iconify text-xl mb-1 block mx-auto" data-icon="mdi:flash-outline"></span>
+                            <span class="text-xs font-medium">简洁高效</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Forbidden Topics -->
+                <div>
+                    <label class="block text-xs text-gray-500 mb-2">禁止话题</label>
+                    <textarea id="forbidden-topics" class="input-field" rows="3" placeholder="机器人不应讨论的话题，每行一个&#10;例如：&#10;竞品价格&#10;内部薪资"></textarea>
+                    <p class="text-[10px] text-gray-600 mt-1">每行一个话题，留空则不限制</p>
+                </div>
+
+                <!-- Handoff Keywords -->
+                <div>
+                    <label class="block text-xs text-gray-500 mb-2">转人工关键词</label>
+                    <input id="handoff-keywords" type="text" class="input-field" placeholder="例如：转人工, 找客服, 投诉" />
+                    <p class="text-[10px] text-gray-600 mt-1">用逗号分隔，用户输入这些关键词时转接人工</p>
+                </div>
+
+                <!-- Handoff Email -->
+                <div>
+                    <label class="block text-xs text-gray-500 mb-2">转人工通知邮箱</label>
+                    <input id="handoff-email" type="email" class="input-field" placeholder="接收转人工通知的邮箱地址" />
+                </div>
+            </div>
+
+            <div class="flex justify-between mt-8">
+                <button onclick="goStep(2)" class="border border-white/10 hover:bg-white/5 px-6 py-3 rounded-xl text-sm font-bold transition flex items-center gap-2">
+                    <span class="iconify" data-icon="mdi:arrow-left"></span> 上一步
+                </button>
+                <button onclick="goStep(4)" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-8 py-3 rounded-xl text-sm font-bold transition-all btn-glow flex items-center gap-2">
+                    下一步 <span class="iconify" data-icon="mdi:arrow-right"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 4: Review & Submit -->
+        <div id="step-4" class="card p-8 hidden">
+            <div class="flex items-center gap-3 mb-6">
+                <span class="iconify text-2xl text-[#6A0DAD]" data-icon="mdi:check-decagram-outline"></span>
+                <h2 class="text-lg font-bold">确认并提交审核</h2>
+            </div>
+            <p class="text-sm text-gray-400 mb-6">请确认以下配置信息，提交后将进入审核流程。</p>
+
+            <div class="space-y-4">
+                <!-- Review: Name -->
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xs font-bold text-gray-400 flex items-center gap-2">
+                            <span class="iconify text-sm" data-icon="mdi:robot-happy-outline"></span> 机器人名称
+                        </h3>
+                        <button onclick="goStep(1)" class="text-[10px] text-[#6A0DAD] hover:underline">修改</button>
+                    </div>
+                    <p id="review-name" class="text-sm font-medium"></p>
+                </div>
+
+                <!-- Review: Knowledge Base -->
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xs font-bold text-gray-400 flex items-center gap-2">
+                            <span class="iconify text-sm" data-icon="mdi:book-open-page-variant-outline"></span> 知识库
+                        </h3>
+                        <button onclick="goStep(2)" class="text-[10px] text-[#6A0DAD] hover:underline">修改</button>
+                    </div>
+                    <div id="review-faq" class="space-y-2"></div>
+                </div>
+
+                <!-- Review: Brand Settings -->
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xs font-bold text-gray-400 flex items-center gap-2">
+                            <span class="iconify text-sm" data-icon="mdi:palette-outline"></span> 品牌设置
+                        </h3>
+                        <button onclick="goStep(3)" class="text-[10px] text-[#6A0DAD] hover:underline">修改</button>
+                    </div>
+                    <div id="review-brand" class="space-y-0"></div>
+                </div>
+            </div>
+
+            <div class="flex justify-between mt-8">
+                <button onclick="goStep(3)" class="border border-white/10 hover:bg-white/5 px-6 py-3 rounded-xl text-sm font-bold transition flex items-center gap-2">
+                    <span class="iconify" data-icon="mdi:arrow-left"></span> 上一步
+                </button>
+                <button id="submit-btn" onclick="submitForReview()" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-8 py-3 rounded-xl text-sm font-bold transition-all btn-glow flex items-center gap-2">
+                    <span class="iconify" data-icon="mdi:send-outline"></span> 提交审核
+                </button>
+            </div>
+        </div>
+
+        <!-- Success Modal -->
+        <div id="success-modal" class="hidden fixed inset-0 z-[100] bg-black/70 flex items-center justify-center px-4">
+            <div class="card p-10 text-center max-w-sm w-full">
+                <span class="iconify text-6xl text-green-400 mx-auto mb-4" data-icon="mdi:check-circle-outline"></span>
+                <h2 class="text-xl font-bold mb-2">提交成功</h2>
+                <p class="text-sm text-gray-400 mb-6">您的数字员工配置已提交审核，审核通过后将自动上线。</p>
+                <div class="flex gap-3">
+                    <a id="link-order" href="orders.html" class="flex-1 border border-white/20 py-2.5 rounded-xl text-sm hover:bg-white/5 transition text-center">我的订单</a>
+                    <a href="index.html" class="flex-1 bg-[#6A0DAD] hover:bg-[#8A2BE2] py-2.5 rounded-xl text-sm text-center font-bold transition-all">返回首页</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+const params = new URLSearchParams(window.location.search);
+const orderId = params.get('order_id');
+const deploymentId = params.get('deployment_id');
+
+if (!deploymentId) {
+    showError('缺少部署ID参数');
+}
+
+/* ---- helpers ---- */
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+function check401(res) {
+    if (res.status === 401) {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.href = 'login.html';
+        return true;
+    }
+    return false;
+}
+
+function toast(msg, ok) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
+function showError(msg) {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('error-msg').textContent = msg;
+    document.getElementById('error-view').classList.remove('hidden');
+}
+
+function setLoading(btn, loading, label) {
+    if (loading) {
+        btn.disabled = true;
+        btn.dataset.origHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner"></span> ' + esc(label || '处理中...');
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.origHtml || label || '';
+    }
+}
+
+const toneLabels = { professional: '专业正式', friendly: '亲切友好', humorous: '幽默风趣', concise: '简洁高效' };
+
+/* ---- state ---- */
+let currentStep = 1;
+let deployment = null;
+let faqItems = []; // { id, title, content }
+let faqCounter = 0;
+let selectedTone = 'professional';
+
+/* ---- step navigation ---- */
+function goStep(n) {
+    // Validate before advancing
+    if (n > currentStep) {
+        if (!validateStep(currentStep)) return;
+        // Save current step data before advancing
+        saveStepData(currentStep);
+    }
+
+    currentStep = n;
+    for (let i = 1; i <= 4; i++) {
+        const panel = document.getElementById('step-' + i);
+        if (i === n) panel.classList.remove('hidden');
+        else panel.classList.add('hidden');
+    }
+    updateStepIndicator(n);
+
+    if (n === 4) populateReview();
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function updateStepIndicator(active) {
+    for (let i = 1; i <= 4; i++) {
+        const dot = document.querySelector('[data-step-dot="' + i + '"]');
+        dot.className = 'step-dot ' + (i < active ? 'done' : i === active ? 'active' : 'inactive');
+        if (i < active) {
+            dot.innerHTML = '<span class="iconify text-sm" data-icon="mdi:check"></span>';
+        } else {
+            dot.textContent = i;
+        }
+    }
+    for (let i = 1; i <= 3; i++) {
+        const line = document.querySelector('[data-step-line="' + i + '"]');
+        line.className = 'step-line ' + (i < active ? 'done' : 'inactive');
+    }
+}
+
+function validateStep(step) {
+    if (step === 1) {
+        const name = document.getElementById('deployment-name').value.trim();
+        if (!name || name.length < 2) {
+            toast('请输入机器人名称（至少2个字符）', false);
+            document.getElementById('deployment-name').focus();
+            return false;
+        }
+    }
+    if (step === 2) {
+        collectFaqFromDom();
+        const valid = faqItems.filter(f => f.title.trim() && f.content.trim());
+        if (valid.length === 0) {
+            toast('请至少添加一条FAQ知识', false);
+            return false;
+        }
+        // Check for incomplete items
+        for (const f of faqItems) {
+            if ((f.title.trim() && !f.content.trim()) || (!f.title.trim() && f.content.trim())) {
+                toast('请完整填写每条FAQ的标题和内容', false);
+                return false;
+            }
+        }
+    }
+    if (step === 3) {
+        const brandName = document.getElementById('brand-name').value.trim();
+        if (!brandName) {
+            toast('请输入品牌名称', false);
+            document.getElementById('brand-name').focus();
+            return false;
+        }
+    }
+    return true;
+}
+
+function saveStepData(step) {
+    if (step === 2) {
+        collectFaqFromDom();
+    }
+}
+
+/* ---- FAQ management ---- */
+function addFaqItem(title, content) {
+    faqCounter++;
+    const id = 'faq-' + faqCounter;
+    const container = document.getElementById('faq-list');
+    const div = document.createElement('div');
+    div.className = 'faq-card';
+    div.id = id;
+    div.innerHTML =
+        '<button onclick="removeFaqItem(\'' + id + '\')" class="absolute top-2 right-2 text-gray-600 hover:text-red-400 transition" title="删除">' +
+            '<span class="iconify text-lg" data-icon="mdi:close-circle-outline"></span>' +
+        '</button>' +
+        '<div class="mb-3">' +
+            '<label class="block text-[10px] text-gray-500 mb-1">问题标题</label>' +
+            '<input type="text" class="input-field faq-title" placeholder="例如：如何退款？" maxlength="200" value="' + esc(title || '') + '" />' +
+        '</div>' +
+        '<div>' +
+            '<label class="block text-[10px] text-gray-500 mb-1">回答内容</label>' +
+            '<textarea class="input-field faq-content" rows="3" placeholder="详细的回答内容...">' + esc(content || '') + '</textarea>' +
+        '</div>';
+    container.appendChild(div);
+}
+
+function removeFaqItem(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
+function collectFaqFromDom() {
+    faqItems = [];
+    const cards = document.querySelectorAll('#faq-list .faq-card');
+    cards.forEach(card => {
+        const title = card.querySelector('.faq-title').value;
+        const content = card.querySelector('.faq-content').value;
+        faqItems.push({ title: title, content: content });
+    });
+}
+
+/* ---- Tone selector ---- */
+function selectTone(el) {
+    document.querySelectorAll('.tone-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedTone = el.dataset.tone;
+}
+
+/* ---- Review population ---- */
+function populateReview() {
+    document.getElementById('review-name').textContent = document.getElementById('deployment-name').value.trim();
+
+    // FAQ
+    collectFaqFromDom();
+    const validFaq = faqItems.filter(f => f.title.trim() && f.content.trim());
+    const faqHtml = validFaq.map(f =>
+        '<div class="bg-white/5 rounded-lg p-3">' +
+            '<p class="text-xs font-medium mb-1">' + esc(f.title) + '</p>' +
+            '<p class="text-[10px] text-gray-400 line-clamp-2">' + esc(f.content) + '</p>' +
+        '</div>'
+    ).join('');
+    document.getElementById('review-faq').innerHTML = faqHtml || '<p class="text-xs text-gray-500">无FAQ条目</p>';
+
+    // Brand
+    const brandName = document.getElementById('brand-name').value.trim();
+    const forbidden = document.getElementById('forbidden-topics').value.trim();
+    const handoffKw = document.getElementById('handoff-keywords').value.trim();
+    const handoffEmail = document.getElementById('handoff-email').value.trim();
+
+    let brandHtml = '';
+    brandHtml += '<div class="review-row"><span class="text-gray-500">品牌名称</span><span>' + esc(brandName) + '</span></div>';
+    brandHtml += '<div class="review-row"><span class="text-gray-500">语气风格</span><span>' + esc(toneLabels[selectedTone] || selectedTone) + '</span></div>';
+    brandHtml += '<div class="review-row"><span class="text-gray-500">禁止话题</span><span class="text-right max-w-[200px] truncate">' + (forbidden ? esc(forbidden.split('\n').filter(Boolean).join(', ')) : '<span class="text-gray-600">未设置</span>') + '</span></div>';
+    brandHtml += '<div class="review-row"><span class="text-gray-500">转人工关键词</span><span class="text-right max-w-[200px] truncate">' + (handoffKw ? esc(handoffKw) : '<span class="text-gray-600">未设置</span>') + '</span></div>';
+    brandHtml += '<div class="review-row"><span class="text-gray-500">通知邮箱</span><span>' + (handoffEmail ? esc(handoffEmail) : '<span class="text-gray-600">未设置</span>') + '</span></div>';
+    document.getElementById('review-brand').innerHTML = brandHtml;
+}
+
+/* ---- API calls ---- */
+const API_BASE = '/api/deployments/' + encodeURIComponent(deploymentId);
+const authHeaders = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+async function loadDeployment() {
+    try {
+        const res = await fetch(API_BASE, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (check401(res)) return;
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            showError(d.error || '无法加载部署信息');
+            return;
+        }
+        const d = await res.json();
+        deployment = d.deployment || d;
+
+        // Pre-fill existing data
+        if (deployment.deployment_name) {
+            document.getElementById('deployment-name').value = deployment.deployment_name;
+        }
+        if (deployment.config) {
+            const c = deployment.config;
+            if (c.brand_name) document.getElementById('brand-name').value = c.brand_name;
+            if (c.brand_tone) {
+                selectedTone = c.brand_tone;
+                document.querySelectorAll('.tone-option').forEach(o => {
+                    o.classList.toggle('selected', o.dataset.tone === selectedTone);
+                });
+            }
+            if (c.forbidden_topics) document.getElementById('forbidden-topics').value = Array.isArray(c.forbidden_topics) ? c.forbidden_topics.join('\n') : c.forbidden_topics;
+            if (c.handoff_keywords) document.getElementById('handoff-keywords').value = Array.isArray(c.handoff_keywords) ? c.handoff_keywords.join(', ') : c.handoff_keywords;
+            if (c.handoff_email) document.getElementById('handoff-email').value = c.handoff_email;
+        }
+
+        // Pre-fill FAQ
+        if (deployment.knowledge_base && deployment.knowledge_base.length > 0) {
+            deployment.knowledge_base.forEach(kb => addFaqItem(kb.title, kb.content));
+        }
+
+        // Add at least one empty FAQ slot if none
+        if (document.querySelectorAll('#faq-list .faq-card').length === 0) {
+            addFaqItem();
+        }
+
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+    } catch (e) {
+        showError('网络错误，请检查连接后重试');
+    }
+}
+
+async function saveConfig() {
+    const deploymentName = document.getElementById('deployment-name').value.trim();
+    const brandName = document.getElementById('brand-name').value.trim();
+    const forbiddenRaw = document.getElementById('forbidden-topics').value.trim();
+    const forbiddenTopics = forbiddenRaw ? forbiddenRaw.split('\n').map(s => s.trim()).filter(Boolean) : [];
+    const handoffKwRaw = document.getElementById('handoff-keywords').value.trim();
+    const handoffKeywords = handoffKwRaw ? handoffKwRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const handoffEmail = document.getElementById('handoff-email').value.trim();
+
+    const body = {
+        deployment_name: deploymentName,
+        brand_name: brandName,
+        brand_tone: selectedTone,
+        forbidden_topics: forbiddenTopics,
+        handoff_keywords: handoffKeywords,
+        handoff_email: handoffEmail
+    };
+
+    const res = await fetch(API_BASE + '/config', {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify(body)
+    });
+    if (check401(res)) return null;
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || '保存配置失败');
+    return d;
+}
+
+async function uploadFaq() {
+    collectFaqFromDom();
+    const validFaq = faqItems.filter(f => f.title.trim() && f.content.trim());
+    if (validFaq.length === 0) return;
+
+    const items = validFaq.map(f => ({
+        title: f.title.trim(),
+        content: f.content.trim(),
+        doc_type: 'faq'
+    }));
+
+    const res = await fetch(API_BASE + '/knowledge-base/batch', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ items: items })
+    });
+    if (check401(res)) return null;
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || '上传知识库失败');
+    return d;
+}
+
+async function publishDeployment() {
+    const res = await fetch(API_BASE + '/publish', {
+        method: 'POST',
+        headers: authHeaders
+    });
+    if (check401(res)) return null;
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || '提交审核失败');
+    return d;
+}
+
+async function submitForReview() {
+    const btn = document.getElementById('submit-btn');
+    setLoading(btn, true, '提交中...');
+
+    try {
+        // 1. Save config
+        await saveConfig();
+
+        // 2. Upload FAQ
+        await uploadFaq();
+
+        // 3. Publish / submit for review
+        await publishDeployment();
+
+        // Show success
+        if (orderId) {
+            document.getElementById('link-order').href = 'order-detail.html?order_id=' + encodeURIComponent(orderId);
+        }
+        document.getElementById('success-modal').classList.remove('hidden');
+    } catch (e) {
+        toast(e.message || '提交失败，请重试', false);
+        setLoading(btn, false);
+    }
+}
+
+/* ---- init ---- */
+if (deploymentId) {
+    loadDeployment();
+}
+</script>
+</body>
+</html>

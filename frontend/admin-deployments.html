@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>部署管理 | 虾虾工厂管理后台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .sidebar-active { background-color: rgba(106,13,173,0.2); border-left: 3px solid #6A0DAD; color: #fff; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: slideIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 900; display: flex; align-items: center; justify-content: center; }
+        .modal-box { background: #0d0f1e; border: 1px solid rgba(255,255,255,0.1); border-radius: 1rem; padding: 2rem; width: 90%; max-width: 420px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-4">
+        <a class="flex items-center space-x-2" href="index.html"><span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span><span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂</span></a>
+        <span class="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-bold">ADMIN</span>
+    </div>
+    <div class="flex items-center space-x-4">
+        <a href="index.html" class="text-xs text-gray-400 hover:text-white transition">返回前台</a>
+        <button onclick="logout()" class="text-xs text-red-400 hover:text-red-300 transition">退出</button>
+    </div>
+</nav>
+<div class="flex pt-16 min-h-screen">
+    <aside class="w-56 border-r border-white/5 bg-black/20 hidden lg:block fixed top-16 bottom-0 overflow-y-auto">
+        <nav class="p-4 space-y-1">
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 ml-3">总览</p>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin.html"><span class="iconify" data-icon="mdi:view-dashboard-outline"></span><span>数据看板</span></a>
+            <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mt-6 mb-3 ml-3">管理</p>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-users.html"><span class="iconify" data-icon="mdi:account-group-outline"></span><span>用户管理</span></a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-workers.html"><span class="iconify" data-icon="mdi:robot-outline"></span><span>员工管理</span></a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-orders.html"><span class="iconify" data-icon="mdi:clipboard-list-outline"></span><span>订单管理</span></a>
+            <a class="sidebar-active flex items-center space-x-3 px-4 py-2.5 rounded-lg transition text-sm" href="admin-deployments.html"><span class="iconify" data-icon="mdi:rocket-launch-outline"></span><span>部署管理</span></a>
+            <a class="flex items-center space-x-3 px-4 py-2.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition text-sm" href="admin-conversations.html"><span class="iconify" data-icon="mdi:chat-outline"></span><span>会话监控</span></a>
+        </nav>
+    </aside>
+    <main class="flex-grow lg:ml-56 p-6 lg:p-8">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex items-center justify-between mb-8">
+                <h1 class="text-2xl font-bold">部署管理</h1>
+                <div class="flex gap-3">
+                    <select id="status-filter" onchange="currentPage=1;loadDeployments()" class="bg-white/5 border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                        <option value="">全部状态</option>
+                        <option value="pending_review">待审核</option>
+                        <option value="active">运行中</option>
+                        <option value="suspended">已暂停</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card overflow-hidden overflow-x-auto">
+                <table class="w-full text-sm text-left min-w-[800px]">
+                    <thead class="bg-white/5 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">ID</th><th class="px-4 py-3">部署名称</th><th class="px-4 py-3">用户</th><th class="px-4 py-3">状态</th><th class="px-4 py-3">渠道</th><th class="px-4 py-3">创建时间</th><th class="px-4 py-3">操作</th></tr>
+                    </thead>
+                    <tbody id="deploy-tbody" class="divide-y divide-white/5"></tbody>
+                </table>
+            </div>
+            <div id="pagination" class="flex justify-center mt-6 space-x-2"></div>
+        </div>
+    </main>
+</div>
+
+<!-- Reject reason modal -->
+<div id="reject-modal" class="modal-backdrop hidden">
+    <div class="modal-box">
+        <h3 class="text-lg font-bold mb-4">拒绝部署</h3>
+        <textarea id="reject-reason" rows="3" placeholder="请输入拒绝原因..." class="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-red-500 resize-none"></textarea>
+        <div class="flex justify-end gap-3 mt-4">
+            <button onclick="closeRejectModal()" class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition">取消</button>
+            <button onclick="confirmReject()" class="px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm hover:bg-red-500/30 transition">确认拒绝</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+(function checkAdmin() {
+    try { const u = JSON.parse(localStorage.getItem('xiaxia_user') || '{}'); if (u.role !== 'admin') { window.location.href = 'profile.html'; } } catch(e) { window.location.href = 'login.html'; }
+})();
+
+function logout() { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; }
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function toast(msg, ok) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
+let currentPage = 1;
+let rejectingId = null;
+
+const statusConf = {
+    pending_review: { label: '待审核', cls: 'bg-yellow-500/20 text-yellow-400' },
+    active:         { label: '运行中', cls: 'bg-green-500/20 text-green-400' },
+    suspended:      { label: '已暂停', cls: 'bg-red-500/20 text-red-400' },
+    rejected:       { label: '已拒绝', cls: 'bg-gray-500/20 text-gray-400' },
+};
+
+async function loadDeployments() {
+    const status = document.getElementById('status-filter').value;
+    let url = `/api/admin/deployments?page=${currentPage}&per_page=15`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+
+    try {
+        const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token }});
+        if (res.status === 403) { toast('无管理员权限', false); return; }
+        if (!res.ok) { toast('加载失败', false); return; }
+        const d = await res.json();
+
+        document.getElementById('deploy-tbody').innerHTML = (d.deployments || []).map(dep => {
+            const sc = statusConf[dep.status] || { label: dep.status, cls: 'bg-gray-500/20 text-gray-400' };
+            let actions = '';
+            if (dep.status === 'pending_review') {
+                actions = `<button onclick="approveDeployment(${dep.id})" class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition mr-1">通过</button>`
+                        + `<button onclick="openRejectModal(${dep.id})" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition">拒绝</button>`;
+            } else if (dep.status === 'active') {
+                actions = `<button onclick="suspendDeployment(${dep.id})" class="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition">暂停</button>`;
+            } else {
+                actions = '<span class="text-[10px] text-gray-600">-</span>';
+            }
+            return `
+            <tr class="hover:bg-white/5">
+                <td class="px-4 py-3 font-mono text-xs text-gray-500">${dep.id}</td>
+                <td class="px-4 py-3 font-medium">${esc(dep.name || '-')}</td>
+                <td class="px-4 py-3 text-xs">${esc(dep.username || '-')}</td>
+                <td class="px-4 py-3"><span class="text-[10px] px-2 py-0.5 rounded-full ${sc.cls}">${sc.label}</span></td>
+                <td class="px-4 py-3 text-xs">${esc(dep.channel || '-')}</td>
+                <td class="px-4 py-3 text-xs text-gray-500">${dep.created_at ? dep.created_at.split('T')[0] : '-'}</td>
+                <td class="px-4 py-3">${actions}</td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500">暂无部署</td></tr>';
+
+        renderPagination(d.page, d.pages);
+    } catch(e) { console.error(e); toast('加载失败', false); }
+}
+
+async function approveDeployment(id) {
+    if (!confirm('确认通过该部署？')) return;
+    try {
+        const res = await fetch(`/api/admin/deployments/${id}/approve`, {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const d = await res.json();
+        if (!res.ok) { toast(d.error || '操作失败', false); return; }
+        toast('部署已通过', true);
+        loadDeployments();
+    } catch(e) { toast('操作失败', false); }
+}
+
+function openRejectModal(id) {
+    rejectingId = id;
+    document.getElementById('reject-reason').value = '';
+    document.getElementById('reject-modal').classList.remove('hidden');
+}
+function closeRejectModal() {
+    rejectingId = null;
+    document.getElementById('reject-modal').classList.add('hidden');
+}
+
+async function confirmReject() {
+    const reason = document.getElementById('reject-reason').value.trim();
+    if (!reason) { toast('请输入拒绝原因', false); return; }
+    try {
+        const res = await fetch(`/api/admin/deployments/${rejectingId}/reject`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+        });
+        const d = await res.json();
+        if (!res.ok) { toast(d.error || '操作失败', false); return; }
+        toast('部署已拒绝', true);
+        closeRejectModal();
+        loadDeployments();
+    } catch(e) { toast('操作失败', false); }
+}
+
+async function suspendDeployment(id) {
+    if (!confirm('确认暂停该部署？')) return;
+    try {
+        const res = await fetch(`/api/admin/deployments/${id}/suspend`, {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const d = await res.json();
+        if (!res.ok) { toast(d.error || '操作失败', false); return; }
+        toast('部署已暂停', true);
+        loadDeployments();
+    } catch(e) { toast('操作失败', false); }
+}
+
+function renderPagination(page, pages) {
+    const c = document.getElementById('pagination');
+    if (pages <= 1) { c.innerHTML = ''; return; }
+    let h = '';
+    if (page > 1) h += `<button onclick="goPage(${page-1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>`;
+    for (let i = 1; i <= pages; i++) {
+        if (i === page) h += `<button class="px-3 py-1 rounded bg-[#6A0DAD] text-sm font-bold">${i}</button>`;
+        else if (Math.abs(i-page)<=2||i===1||i===pages) h += `<button onclick="goPage(${i})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">${i}</button>`;
+        else if (Math.abs(i-page)===3) h += '<span class="text-gray-500">...</span>';
+    }
+    if (page < pages) h += `<button onclick="goPage(${page+1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>`;
+    c.innerHTML = h;
+}
+function goPage(p) { currentPage = p; loadDeployments(); }
+
+loadDeployments();
+</script>
+</body>
+</html>

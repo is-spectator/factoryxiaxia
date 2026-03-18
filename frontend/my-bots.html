@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>我的机器人 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .btn-glow:hover { box-shadow: 0 0 20px rgba(106,13,173,0.6); transform: translateY(-2px); }
+        .card-hover:hover { border-color: rgba(106,13,173,0.3); background: rgba(255,255,255,0.04); }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .embed-code { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 14px; font-family: 'Courier New', monospace; font-size: 12px; color: #9ca3af; word-break: break-all; line-height: 1.5; }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<!-- 导航 -->
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="text-white transition" href="my-bots.html">我的机器人</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+    </div>
+</nav>
+
+<main class="pt-28 pb-20 px-6 max-w-5xl mx-auto">
+    <div class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+        <div>
+            <h1 class="text-3xl font-bold mb-1">我的机器人</h1>
+            <p class="text-gray-400">管理您已部署的机器人实例</p>
+        </div>
+        <a href="workers.html" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2.5 rounded-xl text-sm font-bold btn-glow transition inline-flex items-center">
+            <span class="iconify mr-1" data-icon="mdi:plus"></span>部署新机器人
+        </a>
+    </div>
+
+    <!-- 机器人列表 -->
+    <div id="bots-list" class="space-y-4 mb-10">
+        <div class="text-center py-20 text-gray-500">加载中...</div>
+    </div>
+
+    <!-- 分页 -->
+    <div id="pagination" class="flex justify-center items-center space-x-2"></div>
+</main>
+
+<footer class="py-6 px-6 border-t border-white/5 text-center text-xs text-gray-600 bg-black/30">
+    <p>&copy; 2026 虾虾工厂 (XiaXia Factory Inc.)</p>
+</footer>
+
+<script>
+    const token = localStorage.getItem('xiaxia_token');
+    if (!token) { window.location.href = 'login.html'; }
+
+    function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
+
+    let currentPage = 1;
+
+    const statusConfig = {
+        pending_setup:  { label: '待配置', color: 'text-yellow-400', bg: 'bg-yellow-500/20', icon: 'mdi:cog-outline' },
+        pending_review: { label: '审核中', color: 'text-blue-400', bg: 'bg-blue-500/20', icon: 'mdi:magnify' },
+        deploying:      { label: '部署中', color: 'text-blue-400', bg: 'bg-blue-500/20', icon: 'mdi:rocket-launch-outline' },
+        active:         { label: '运行中', color: 'text-green-400', bg: 'bg-green-500/20', icon: 'mdi:check-circle-outline' },
+        suspended:      { label: '已暂停', color: 'text-red-400', bg: 'bg-red-500/20', icon: 'mdi:pause-circle-outline' },
+        expired:        { label: '已过期', color: 'text-gray-400', bg: 'bg-gray-500/20', icon: 'mdi:clock-alert-outline' },
+        terminated:     { label: '已终止', color: 'text-gray-400', bg: 'bg-gray-500/20', icon: 'mdi:close-circle-outline' },
+    };
+
+    function esc(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return '-';
+        return iso.split('T')[0];
+    }
+
+    async function loadDeployments() {
+        const url = '/api/deployments?page=' + currentPage + '&per_page=10';
+        try {
+            const res = await fetch(url, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (res.status === 401) { window.location.href = 'login.html'; return; }
+            const data = await res.json();
+            renderDeployments(data.deployments);
+            renderPagination(data.page, data.pages);
+        } catch(e) {
+            document.getElementById('bots-list').innerHTML = '<div class="text-center py-20 text-red-400">加载失败，请刷新重试</div>';
+        }
+    }
+
+    function renderDeployments(deployments) {
+        const container = document.getElementById('bots-list');
+        if (!deployments || deployments.length === 0) {
+            container.innerHTML =
+                '<div class="text-center py-20">' +
+                    '<span class="iconify text-6xl text-gray-700 mb-4 inline-block" data-icon="mdi:robot-off-outline"></span>' +
+                    '<p class="text-gray-500 mb-4">暂无已部署的机器人</p>' +
+                    '<a href="workers.html" class="text-cyan-400 hover:underline text-sm">前往数职市场部署</a>' +
+                '</div>';
+            return;
+        }
+        container.innerHTML = '';
+        deployments.forEach(function(d) {
+            var sc = statusConfig[d.status] || statusConfig.active;
+            var card = document.createElement('div');
+            card.className = 'glass-morphism rounded-2xl p-6 border border-transparent card-hover transition-all';
+
+            // Header row
+            var header = document.createElement('div');
+            header.className = 'flex flex-col md:flex-row md:items-center justify-between gap-4';
+
+            // Left: bot info
+            var left = document.createElement('div');
+            left.className = 'flex items-center gap-4';
+
+            var iconWrap = document.createElement('div');
+            iconWrap.className = 'w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0';
+            iconWrap.style.background = 'linear-gradient(135deg, #6A0DAD, #00D2FF)';
+            iconWrap.innerHTML = '<span class="iconify text-2xl" data-icon="mdi:robot-happy-outline"></span>';
+
+            var info = document.createElement('div');
+            var botName = document.createElement('h3');
+            botName.className = 'font-bold';
+            botName.textContent = d.bot_name || d.name || '未命名机器人';
+
+            var meta = document.createElement('p');
+            meta.className = 'text-xs text-gray-500 mt-1';
+
+            var workerSpan = document.createElement('span');
+            workerSpan.className = 'mr-3';
+            workerSpan.textContent = '员工: ' + (d.worker_name || '-');
+            meta.appendChild(workerSpan);
+
+            var planSpan = document.createElement('span');
+            planSpan.className = 'mr-3';
+            planSpan.textContent = '套餐: ' + (d.plan_name || '-');
+            meta.appendChild(planSpan);
+
+            if (d.channel_type) {
+                var chanSpan = document.createElement('span');
+                chanSpan.textContent = '渠道: ' + d.channel_type;
+                meta.appendChild(chanSpan);
+            }
+
+            info.appendChild(botName);
+            info.appendChild(meta);
+            left.appendChild(iconWrap);
+            left.appendChild(info);
+
+            // Right: status + dates
+            var right = document.createElement('div');
+            right.className = 'flex items-center gap-6';
+
+            var dateBlock = document.createElement('div');
+            dateBlock.className = 'text-right hidden sm:block';
+            var createdP = document.createElement('p');
+            createdP.className = 'text-xs text-gray-500';
+            createdP.textContent = '创建: ' + fmtDate(d.created_at);
+            var expiresP = document.createElement('p');
+            expiresP.className = 'text-xs text-gray-500 mt-0.5';
+            expiresP.textContent = '到期: ' + fmtDate(d.expires_at);
+            dateBlock.appendChild(createdP);
+            dateBlock.appendChild(expiresP);
+
+            var statusBadge = document.createElement('span');
+            statusBadge.className = sc.bg + ' ' + sc.color + ' text-xs px-3 py-1 rounded-full inline-flex items-center';
+            statusBadge.innerHTML = '<span class="iconify mr-1" data-icon="' + esc(sc.icon) + '"></span>';
+            var statusText = document.createTextNode(sc.label);
+            statusBadge.appendChild(statusText);
+
+            right.appendChild(dateBlock);
+            right.appendChild(statusBadge);
+
+            header.appendChild(left);
+            header.appendChild(right);
+            card.appendChild(header);
+
+            // Actions row
+            var actions = document.createElement('div');
+            actions.className = 'mt-4 pt-4 border-t border-white/5 flex flex-wrap items-center gap-3';
+
+            var configLink = document.createElement('a');
+            configLink.href = 'deployment-setup.html?id=' + encodeURIComponent(d.id);
+            configLink.className = 'text-xs text-cyan-400 hover:text-cyan-300 border border-cyan-400/30 px-3 py-1.5 rounded-lg hover:bg-cyan-400/10 transition inline-flex items-center';
+            configLink.innerHTML = '<span class="iconify mr-1" data-icon="mdi:cog-outline"></span>';
+            configLink.appendChild(document.createTextNode('配置'));
+
+            var convLink = document.createElement('a');
+            convLink.href = 'conversations.html?deployment_id=' + encodeURIComponent(d.id);
+            convLink.className = 'text-xs text-purple-400 hover:text-purple-300 border border-purple-400/30 px-3 py-1.5 rounded-lg hover:bg-purple-400/10 transition inline-flex items-center';
+            convLink.innerHTML = '<span class="iconify mr-1" data-icon="mdi:chat-outline"></span>';
+            convLink.appendChild(document.createTextNode('会话记录'));
+
+            var analyticsLink = document.createElement('a');
+            analyticsLink.href = 'analytics.html?deployment_id=' + encodeURIComponent(d.id);
+            analyticsLink.className = 'text-xs text-green-400 hover:text-green-300 border border-green-400/30 px-3 py-1.5 rounded-lg hover:bg-green-400/10 transition inline-flex items-center';
+            analyticsLink.innerHTML = '<span class="iconify mr-1" data-icon="mdi:chart-box-outline"></span>';
+            analyticsLink.appendChild(document.createTextNode('数据看板'));
+
+            actions.appendChild(configLink);
+            actions.appendChild(convLink);
+            actions.appendChild(analyticsLink);
+            card.appendChild(actions);
+
+            // Embed code for active deployments
+            if (d.status === 'active' && d.id) {
+                var embedSection = document.createElement('div');
+                embedSection.className = 'mt-4 pt-4 border-t border-white/5';
+
+                var embedLabel = document.createElement('div');
+                embedLabel.className = 'flex items-center justify-between mb-2';
+
+                var labelText = document.createElement('span');
+                labelText.className = 'text-xs text-gray-500';
+                labelText.textContent = '嵌入代码';
+
+                var copyBtn = document.createElement('button');
+                copyBtn.className = 'text-xs text-cyan-400 hover:text-cyan-300 transition inline-flex items-center';
+                copyBtn.innerHTML = '<span class="iconify mr-1" data-icon="mdi:content-copy"></span>';
+                copyBtn.appendChild(document.createTextNode('复制'));
+                var embedId = d.id;
+                copyBtn.addEventListener('click', (function(id) {
+                    return function() {
+                        var code = '<script src="' + window.location.origin + '/embed/' + id + '.js"></' + 'script>';
+                        navigator.clipboard.writeText(code).then(function() {
+                            toast('嵌入代码已复制', true);
+                        }).catch(function() {
+                            toast('复制失败，请手动复制', false);
+                        });
+                    };
+                })(embedId));
+
+                embedLabel.appendChild(labelText);
+                embedLabel.appendChild(copyBtn);
+
+                var codeBlock = document.createElement('div');
+                codeBlock.className = 'embed-code';
+                codeBlock.textContent = '<script src="' + window.location.origin + '/embed/' + d.id + '.js"></' + 'script>';
+
+                embedSection.appendChild(embedLabel);
+                embedSection.appendChild(codeBlock);
+                card.appendChild(embedSection);
+            }
+
+            container.appendChild(card);
+        });
+    }
+
+    function renderPagination(page, pages) {
+        var container = document.getElementById('pagination');
+        if (!pages || pages <= 1) { container.innerHTML = ''; return; }
+        var html = '';
+        if (page > 1) html += '<button onclick="goPage(' + (page-1) + ')" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>';
+        for (var i = 1; i <= pages; i++) {
+            if (i === page) {
+                html += '<button class="px-3 py-1 rounded bg-[#6A0DAD] text-white text-sm font-bold">' + i + '</button>';
+            } else if (Math.abs(i - page) <= 2 || i === 1 || i === pages) {
+                html += '<button onclick="goPage(' + i + ')" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">' + i + '</button>';
+            } else if (Math.abs(i - page) === 3) {
+                html += '<span class="text-gray-500">...</span>';
+            }
+        }
+        if (page < pages) html += '<button onclick="goPage(' + (page+1) + ')" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>';
+        container.innerHTML = html;
+    }
+
+    function goPage(p) { currentPage = p; loadDeployments(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+
+    loadDeployments();
+</script>
+</body>
+</html>

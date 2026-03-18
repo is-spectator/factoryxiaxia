@@ -27,6 +27,13 @@ from routes.catalog import bp as catalog_bp
 from routes.orders import bp as orders_bp
 from routes.admin import bp as admin_bp
 from routes.system import bp as system_bp
+from routes.deployments import bp as deployments_bp
+from routes.chat import bp as chat_bp
+
+# Re-export models and utilities for test access (app_module.User, etc.)
+from models import User, Category, Worker  # noqa: F401
+from sqlalchemy import text  # noqa: F401
+from utils.helpers import JsonFormatter  # noqa: F401
 
 logger = setup_logging()
 
@@ -102,6 +109,8 @@ app.register_blueprint(catalog_bp)
 app.register_blueprint(orders_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(system_bp)
+app.register_blueprint(deployments_bp)
+app.register_blueprint(chat_bp)
 
 
 with app.app_context():

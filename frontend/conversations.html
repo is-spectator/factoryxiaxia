@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>会话记录 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .bubble-visitor { background: rgba(106,13,173,0.15); border: 1px solid rgba(106,13,173,0.3); border-radius: 1rem 1rem 1rem 0.25rem; }
+        .bubble-bot { background: rgba(0,210,255,0.1); border: 1px solid rgba(0,210,255,0.2); border-radius: 1rem 1rem 0.25rem 1rem; }
+        .bubble-agent { background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.25); border-radius: 1rem 1rem 0.25rem 1rem; }
+        .session-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; transition: all 0.2s ease; }
+        .session-card:hover { border-color: rgba(106,13,173,0.4); background: rgba(255,255,255,0.04); }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="hover:text-white transition" href="messages.html">消息中心</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+    </div>
+</nav>
+
+<main class="pt-24 pb-16 px-4 max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <a href="orders.html" class="hover:text-white transition">我的订单</a>
+            <span class="iconify" data-icon="mdi:chevron-right"></span>
+            <span id="breadcrumb-name" class="text-gray-400">会话记录</span>
+        </div>
+        <div class="flex items-center justify-between flex-wrap gap-4">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    <span class="iconify text-[#6A0DAD]" data-icon="mdi:chat-processing-outline"></span>
+                    会话记录
+                </h1>
+                <p id="deployment-info" class="text-sm text-gray-500 mt-1"></p>
+            </div>
+            <div class="flex gap-3 items-center">
+                <select id="status-filter" onchange="goPage(1)" class="bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-cyan-500">
+                    <option value="">全部状态</option>
+                    <option value="active">进行中</option>
+                    <option value="closed">已结束</option>
+                    <option value="handoff">已转人工</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session list -->
+    <div id="session-list" class="space-y-3"></div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="flex justify-center mt-6 space-x-2"></div>
+
+    <!-- Empty state -->
+    <div id="empty" class="hidden text-center py-20">
+        <span class="iconify text-5xl text-gray-700 mx-auto mb-4" data-icon="mdi:chat-remove-outline"></span>
+        <p class="text-gray-600">暂无会话记录</p>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loading" class="text-center py-20">
+        <span class="iconify text-4xl text-gray-600 animate-spin" data-icon="mdi:loading"></span>
+        <p class="text-gray-600 mt-2 text-sm">加载中...</p>
+    </div>
+</main>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+const params = new URLSearchParams(window.location.search);
+const deploymentId = params.get('deployment_id');
+if (!deploymentId) { alert('缺少 deployment_id 参数'); window.location.href = 'orders.html'; }
+
+const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+let currentPage = 1;
+let expandedSession = null;
+
+function esc(s) {
+    if (s == null) return '';
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(String(s)));
+    return d.innerHTML;
+}
+
+const statusMap = {
+    active:  { label: '进行中', cls: 'bg-green-500/20 text-green-400' },
+    closed:  { label: '已结束', cls: 'bg-gray-500/20 text-gray-400' },
+    handoff: { label: '已转人工', cls: 'bg-orange-500/20 text-orange-400' }
+};
+
+function formatTime(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' +
+           d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDuration(start, end) {
+    if (!start) return '-';
+    const s = new Date(start);
+    const e = end ? new Date(end) : new Date();
+    const diff = Math.floor((e - s) / 1000);
+    if (diff < 60) return diff + '秒';
+    if (diff < 3600) return Math.floor(diff / 60) + '分钟';
+    return Math.floor(diff / 3600) + '小时' + Math.floor((diff % 3600) / 60) + '分钟';
+}
+
+async function loadDeployment() {
+    try {
+        const res = await fetch('/api/deployments/' + deploymentId, { headers });
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        if (!res.ok) return;
+        const d = await res.json();
+        const name = d.deployment?.name || d.name || '';
+        document.getElementById('deployment-info').textContent = name ? '部署: ' + name : '';
+        document.getElementById('breadcrumb-name').textContent = name || '会话记录';
+        document.title = (name ? name + ' - ' : '') + '会话记录 | 虾虾工厂';
+    } catch (e) { /* ignore */ }
+}
+
+async function loadSessions() {
+    const status = document.getElementById('status-filter').value;
+    let url = '/api/chat/' + deploymentId + '/sessions?page=' + currentPage;
+    if (status) url += '&status=' + status;
+
+    document.getElementById('loading').classList.remove('hidden');
+    document.getElementById('session-list').innerHTML = '';
+    document.getElementById('empty').classList.add('hidden');
+    document.getElementById('pagination').innerHTML = '';
+
+    try {
+        const res = await fetch(url, { headers });
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        const d = await res.json();
+
+        document.getElementById('loading').classList.add('hidden');
+
+        const sessions = d.sessions || d.data || [];
+        const page = d.page || 1;
+        const pages = d.pages || d.total_pages || 1;
+
+        if (sessions.length === 0) {
+            document.getElementById('empty').classList.remove('hidden');
+            return;
+        }
+
+        document.getElementById('session-list').innerHTML = sessions.map(s => {
+            const st = statusMap[s.status] || statusMap.closed;
+            const score = s.satisfaction_score != null ? s.satisfaction_score : null;
+            return `
+            <div class="session-card overflow-hidden">
+                <div class="p-4 cursor-pointer" onclick="toggleSession('${esc(s.session_id || s.id)}', this)">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                ${esc((s.visitor_name || '访客').charAt(0))}
+                            </div>
+                            <div>
+                                <p class="font-medium text-sm">${esc(s.visitor_name || '访客')}</p>
+                                <p class="text-[11px] text-gray-500">${formatTime(s.started_at)}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 flex-wrap">
+                            ${score !== null ? `
+                            <span class="text-xs text-yellow-400 flex items-center gap-0.5">
+                                <span class="iconify" data-icon="mdi:star"></span>${esc(score)}
+                            </span>` : ''}
+                            <span class="text-xs text-gray-500 flex items-center gap-1">
+                                <span class="iconify" data-icon="mdi:message-text-outline"></span>${esc(s.message_count ?? '-')}
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.cls}">${st.label}</span>
+                            <span class="iconify text-gray-600 transition-transform session-chevron" data-icon="mdi:chevron-down"></span>
+                        </div>
+                    </div>
+                    ${s.ended_at ? `<p class="text-[11px] text-gray-600 mt-1 ml-12">持续 ${formatDuration(s.started_at, s.ended_at)} &middot; 结束于 ${formatTime(s.ended_at)}</p>` : `<p class="text-[11px] text-green-500/60 mt-1 ml-12">对话进行中 &middot; 已持续 ${formatDuration(s.started_at, null)}</p>`}
+                </div>
+                <div class="messages-panel hidden border-t border-white/5" id="panel-${esc(s.session_id || s.id)}"></div>
+            </div>`;
+        }).join('');
+
+        renderPagination(page, pages);
+    } catch (e) {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('session-list').innerHTML = '<p class="text-center text-red-400 py-10">加载失败，请稍后重试</p>';
+    }
+}
+
+async function toggleSession(sessionId, el) {
+    const panel = document.getElementById('panel-' + sessionId);
+    const chevron = el.querySelector('.session-chevron');
+
+    if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        if (chevron) chevron.style.transform = '';
+        expandedSession = null;
+        return;
+    }
+
+    // Collapse any other open panels
+    document.querySelectorAll('.messages-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.session-chevron').forEach(c => c.style.transform = '');
+
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<div class="p-6 text-center"><span class="iconify text-2xl text-gray-600 animate-spin" data-icon="mdi:loading"></span></div>';
+    expandedSession = sessionId;
+
+    try {
+        const res = await fetch('/api/chat/' + deploymentId + '/sessions/' + sessionId + '/messages', { headers });
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        const d = await res.json();
+        const messages = d.messages || d.data || [];
+
+        if (messages.length === 0) {
+            panel.innerHTML = '<div class="p-6 text-center text-gray-600 text-sm">暂无消息</div>';
+            return;
+        }
+
+        panel.innerHTML = '<div class="p-4 space-y-3 max-h-[500px] overflow-y-auto">' +
+            messages.map(m => {
+                const isVisitor = m.role === 'visitor' || m.role === 'user';
+                const isAgent = m.role === 'agent';
+                const bubbleCls = isVisitor ? 'bubble-visitor' : (isAgent ? 'bubble-agent' : 'bubble-bot');
+                const alignCls = isVisitor ? 'mr-auto' : 'ml-auto';
+                const label = isVisitor ? '' : (isAgent ? '<span class="text-[10px] text-orange-400 font-bold mb-0.5 block">人工客服</span>' : '<span class="text-[10px] text-cyan-400 font-bold mb-0.5 block">Bot</span>');
+                const time = m.created_at ? '<span class="text-[10px] text-gray-600 mt-1 block">' + formatTime(m.created_at) + '</span>' : '';
+                return `<div class="max-w-[80%] ${alignCls}">
+                    ${label}
+                    <div class="${bubbleCls} px-4 py-2.5 text-sm leading-relaxed">${esc(m.content)}</div>
+                    ${time}
+                </div>`;
+            }).join('') +
+        '</div>';
+    } catch (e) {
+        panel.innerHTML = '<div class="p-6 text-center text-red-400 text-sm">消息加载失败</div>';
+    }
+}
+
+function renderPagination(page, pages) {
+    const c = document.getElementById('pagination');
+    if (pages <= 1) { c.innerHTML = ''; return; }
+    let h = '';
+    if (page > 1) h += `<button onclick="goPage(${page - 1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&laquo;</button>`;
+    for (let i = 1; i <= pages; i++) {
+        if (i === page) {
+            h += `<button class="px-3 py-1 rounded bg-[#6A0DAD] text-sm font-bold">${i}</button>`;
+        } else if (Math.abs(i - page) <= 2 || i === 1 || i === pages) {
+            h += `<button onclick="goPage(${i})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">${i}</button>`;
+        } else if (Math.abs(i - page) === 3) {
+            h += `<span class="px-2 py-1 text-gray-600 text-sm">...</span>`;
+        }
+    }
+    if (page < pages) h += `<button onclick="goPage(${page + 1})" class="px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-sm">&raquo;</button>`;
+    c.innerHTML = h;
+}
+
+function goPage(p) {
+    currentPage = p;
+    loadSessions();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Init
+loadDeployment();
+loadSessions();
+
+// Update nav auth
+(function() {
+    const userStr = localStorage.getItem('xiaxia_user');
+    if (token && userStr) {
+        try {
+            const user = JSON.parse(userStr);
+            document.getElementById('nav-auth').innerHTML = `
+                <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html">
+                    <span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>
+                    ${esc(user.username)}
+                </a>
+                <button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>
+            `;
+        } catch (e) { /* ignore */ }
+    }
+})();
+
+function logout() {
+    localStorage.removeItem('xiaxia_token');
+    localStorage.removeItem('xiaxia_user');
+    window.location.href = 'login.html';
+}
+</script>
+</body>
+</html>

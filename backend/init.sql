@@ -164,3 +164,217 @@ INSERT INTO workers (name, category_id, avatar_icon, avatar_gradient_from, avata
 ('SEO 增长黑客', 7, 'mdi:search-web', '#8b5cf6', '#d946ef', 5, '关键词策略,文章生成,外链建设,数据追踪', '全链路SEO优化方案，从关键词调研到内容生产到排名追踪一站式服务。支持Google/百度/Bing多搜索引擎优化。', 0.12, '按件计费', 'online', 4.4, 6780),
 ('游戏数值策划师', 8, 'mdi:controller', '#0ea5e9', '#6366f1', 9, '概率模型,经济系统平衡,数值仿真,玩家行为分析', '精通游戏经济系统设计和数值平衡调优。基于蒙特卡洛模拟和玩家行为数据，确保游戏内经济不崩溃、数值不膨胀。', 3.20, '时薪', 'online', 4.7, 432)
 ON DUPLICATE KEY UPDATE name=name;
+
+-- ===== 迭代 A: 新增机器人商品与部署模型 =====
+
+-- 扩展 workers 表: 新增 worker_type / delivery_mode / template_key
+ALTER TABLE workers
+    ADD COLUMN IF NOT EXISTS worker_type VARCHAR(20) DEFAULT 'generic',
+    ADD COLUMN IF NOT EXISTS delivery_mode VARCHAR(20) DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS template_key VARCHAR(50) DEFAULT '';
+
+-- 扩展 orders 表: 新增 order_type / service_plan_id
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS order_type VARCHAR(20) DEFAULT 'rental',
+    ADD COLUMN IF NOT EXISTS service_plan_id INT DEFAULT NULL;
+
+-- 组织表
+CREATE TABLE IF NOT EXISTS organizations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    industry VARCHAR(50) DEFAULT '',
+    status VARCHAR(20) DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Agent 模板表
+CREATE TABLE IF NOT EXISTS agent_templates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    `key` VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    source_repo VARCHAR(200) DEFAULT '',
+    source_path VARCHAR(200) DEFAULT '',
+    prompt_template TEXT DEFAULT NULL,
+    default_tools TEXT DEFAULT NULL,
+    risk_level VARCHAR(20) DEFAULT 'low',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 服务套餐表
+CREATE TABLE IF NOT EXISTS service_plans (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    worker_id INT NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    billing_cycle VARCHAR(20) DEFAULT 'monthly',
+    session_quota INT DEFAULT 500,
+    knowledge_base_limit INT DEFAULT 1,
+    channel_limit INT DEFAULT 1,
+    seat_limit INT DEFAULT 1,
+    features TEXT DEFAULT NULL,
+    sort_order INT DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (worker_id) REFERENCES workers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 部署实例表
+CREATE TABLE IF NOT EXISTS deployments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    organization_id INT DEFAULT NULL,
+    order_id INT NOT NULL,
+    user_id INT NOT NULL,
+    worker_id INT NOT NULL,
+    template_id INT DEFAULT NULL,
+    service_plan_id INT DEFAULT NULL,
+    status VARCHAR(20) DEFAULT 'pending_setup',
+    deployment_name VARCHAR(100) DEFAULT '',
+    channel_type VARCHAR(30) DEFAULT 'web_chat',
+    config_json TEXT DEFAULT NULL,
+    embed_code TEXT DEFAULT NULL,
+    started_at DATETIME DEFAULT NULL,
+    suspended_at DATETIME DEFAULT NULL,
+    expires_at DATETIME DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id),
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (worker_id) REFERENCES workers(id),
+    FOREIGN KEY (template_id) REFERENCES agent_templates(id),
+    FOREIGN KEY (service_plan_id) REFERENCES service_plans(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ===== 迭代 B: 知识库与会话体系 =====
+
+-- 知识库表
+CREATE TABLE IF NOT EXISTS knowledge_bases (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    deployment_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) DEFAULT 'draft',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (deployment_id) REFERENCES deployments(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 知识库文档表
+CREATE TABLE IF NOT EXISTS knowledge_documents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    knowledge_base_id INT NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    doc_type VARCHAR(20) DEFAULT 'faq',
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 会话表
+CREATE TABLE IF NOT EXISTS conversation_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    deployment_id INT NOT NULL,
+    visitor_id VARCHAR(100) DEFAULT '',
+    visitor_name VARCHAR(100) DEFAULT '访客',
+    status VARCHAR(20) DEFAULT 'active',
+    satisfaction_score INT DEFAULT NULL,
+    message_count INT DEFAULT 0,
+    resolved BOOLEAN DEFAULT FALSE,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME DEFAULT NULL,
+    FOREIGN KEY (deployment_id) REFERENCES deployments(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 会话消息表
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    confidence DECIMAL(3,2) DEFAULT NULL,
+    source_doc_ids TEXT DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES conversation_sessions(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 转人工工单表
+CREATE TABLE IF NOT EXISTS handoff_tickets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    deployment_id INT NOT NULL,
+    reason VARCHAR(200) DEFAULT '',
+    status VARCHAR(20) DEFAULT 'pending',
+    assigned_to VARCHAR(100) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME DEFAULT NULL,
+    FOREIGN KEY (session_id) REFERENCES conversation_sessions(id),
+    FOREIGN KEY (deployment_id) REFERENCES deployments(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 用量记录表
+CREATE TABLE IF NOT EXISTS usage_records (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    deployment_id INT NOT NULL,
+    record_date DATE NOT NULL,
+    session_count INT DEFAULT 0,
+    message_count INT DEFAULT 0,
+    handoff_count INT DEFAULT 0,
+    resolved_count INT DEFAULT 0,
+    avg_satisfaction DECIMAL(3,2) DEFAULT NULL,
+    FOREIGN KEY (deployment_id) REFERENCES deployments(id),
+    UNIQUE KEY uq_deploy_date (deployment_id, record_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ===== 新增索引 =====
+CREATE INDEX idx_deployments_user_id ON deployments(user_id);
+CREATE INDEX idx_deployments_status ON deployments(status);
+CREATE INDEX idx_deployments_order_id ON deployments(order_id);
+CREATE INDEX idx_kb_deployment_id ON knowledge_bases(deployment_id);
+CREATE INDEX idx_kb_docs_kb_id ON knowledge_documents(knowledge_base_id);
+CREATE INDEX idx_kb_docs_status ON knowledge_documents(status);
+CREATE INDEX idx_sessions_deployment_id ON conversation_sessions(deployment_id);
+CREATE INDEX idx_sessions_status ON conversation_sessions(status);
+CREATE INDEX idx_messages_session_id ON conversation_messages(session_id);
+CREATE INDEX idx_handoff_deployment_id ON handoff_tickets(deployment_id);
+CREATE INDEX idx_handoff_status ON handoff_tickets(status);
+CREATE INDEX idx_usage_deployment_id ON usage_records(deployment_id);
+
+-- ===== 种子数据: Agent Template =====
+INSERT INTO agent_templates (`key`, name, source_repo, source_path, prompt_template, default_tools, risk_level) VALUES
+('support_responder', '智能客服助手 (Support Responder)',
+ 'https://github.com/msitarzewski/agency-agents',
+ 'support/support-support-responder.md',
+ '你是一个专业的客服助手，擅长多渠道客户服务、问题解决和用户体验优化。你始终保持同理心、专注于解决方案、主动为客户着想。',
+ '["knowledge_search","handoff","session_close"]',
+ 'low')
+ON DUPLICATE KEY UPDATE name=name;
+
+-- ===== 更新种子员工: 客服员工标记为 agent 类型 =====
+UPDATE workers SET worker_type='agent', delivery_mode='semi_auto', template_key='support_responder'
+WHERE name IN ('多语言客服 #12', '智能质检客服');
+
+-- ===== 种子数据: 虾虾客服员工 Pro（新增旗舰客服机器人） =====
+INSERT INTO workers (name, category_id, avatar_icon, avatar_gradient_from, avatar_gradient_to, level, skills, description, hourly_rate, billing_unit, status, rating, total_orders, worker_type, delivery_mode, template_key) VALUES
+('虾虾客服员工 Pro', 3, 'mdi:robot-happy', '#2563eb', '#7c3aed', 9,
+ '7x24在线,知识库问答,智能转人工,多语言,会话报表,品牌定制',
+ '虾虾工厂旗舰数字客服员工。基于 Support Responder 技术，支持网页聊天窗口接入，可上传企业知识库实现智能问答。置信度不足时自动转人工，支持会话记录、满意度统计和运营报表。适合中小 SaaS 团队、电商商家和 B 端企业官网。\n\n核心能力：\n• 7×24 小时在线自动应答\n• 上传 FAQ / 产品文档 / 售后政策\n• 配置品牌语气和禁答规则\n• 低置信度自动转人工\n• 实时会话监控和数据报表\n\n首发场景：网页在线客服 + 知识库问答 + 转人工',
+ 0, '月租', 'online', 5.0, 0, 'agent', 'semi_auto', 'support_responder')
+ON DUPLICATE KEY UPDATE description=VALUES(description);
+
+-- ===== 种子数据: 服务套餐（绑定虾虾客服员工 Pro） =====
+-- 注意: 以下使用子查询获取 worker_id
+INSERT INTO service_plans (worker_id, name, price, billing_cycle, session_quota, knowledge_base_limit, channel_limit, seat_limit, features, sort_order) VALUES
+((SELECT id FROM workers WHERE name='虾虾客服员工 Pro' LIMIT 1),
+ 'Starter', 299.00, 'monthly', 500, 1, 1, 1,
+ '["7x24在线客服","1个知识库","500次/月会话","1个网站渠道","人工接管入口","基础数据报表"]',
+ 1),
+((SELECT id FROM workers WHERE name='虾虾客服员工 Pro' LIMIT 1),
+ 'Pro', 799.00, 'monthly', 3000, 3, 3, 5,
+ '["7x24在线客服","3个知识库","3000次/月会话","3个渠道","5个人工坐席","会话报表","敏感词过滤","品牌语气定制","优先技术支持"]',
+ 2),
+((SELECT id FROM workers WHERE name='虾虾客服员工 Pro' LIMIT 1),
+ 'Enterprise', 2999.00, 'monthly', 20000, 10, 10, 20,
+ '["7x24在线客服","10个知识库","20000次/月会话","10个渠道","20个坐席","API接入","SSO单点登录","审计日志","SLA保障","专属客户经理","定制渠道连接器"]',
+ 3)
+ON DUPLICATE KEY UPDATE name=name;

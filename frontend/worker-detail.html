@@ -30,6 +30,7 @@
             <a class="hover:text-white transition" href="index.html">首页</a>
             <a class="text-white transition" href="workers.html">数职市场</a>
             <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="hover:text-white transition" href="my-bots.html">我的机器人</a>
         </div>
     </div>
     <div class="flex items-center space-x-4" id="nav-auth">
@@ -172,8 +173,74 @@
                         <h3 class="text-lg font-bold mb-4 flex items-center">
                             <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:text-box-outline"></span>详细介绍
                         </h3>
-                        <p class="text-gray-300 leading-relaxed">${esc(w.description)}</p>
+                        <p class="text-gray-300 leading-relaxed whitespace-pre-line">${esc(w.description)}</p>
                     </div>
+
+                    ${w.worker_type === 'agent' ? `
+                    <!-- 适用场景 (仅 agent 类型展示) -->
+                    <div class="glass-morphism p-8 rounded-3xl">
+                        <h3 class="text-lg font-bold mb-4 flex items-center">
+                            <span class="iconify mr-2 text-cyan-400" data-icon="mdi:target"></span>适用场景
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-green-500/5 border border-green-500/20 rounded-xl p-4">
+                                <h4 class="text-sm font-bold text-green-400 mb-2 flex items-center"><span class="iconify mr-1" data-icon="mdi:check-circle"></span>支持的场景</h4>
+                                <ul class="text-xs text-gray-400 space-y-1">
+                                    <li>• 网站在线客服 / 官网咨询入口</li>
+                                    <li>• 售前 FAQ 自动回答</li>
+                                    <li>• 售后政策 / 使用指南问答</li>
+                                    <li>• 知识库检索和智能推荐</li>
+                                    <li>• 置信度不足时自动转人工</li>
+                                </ul>
+                            </div>
+                            <div class="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
+                                <h4 class="text-sm font-bold text-red-400 mb-2 flex items-center"><span class="iconify mr-1" data-icon="mdi:close-circle"></span>不支持的场景</h4>
+                                <ul class="text-xs text-gray-400 space-y-1">
+                                    <li>• 自动退款 / 改订单 / 改库存</li>
+                                    <li>• 电话外呼 / 呼叫中心</li>
+                                    <li>• CRM 深度联动</li>
+                                    <li>• 自动承诺补偿或折扣</li>
+                                    <li>• 涉及资金操作的高风险动作</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 人机协同机制 -->
+                    <div class="glass-morphism p-8 rounded-3xl">
+                        <h3 class="text-lg font-bold mb-4 flex items-center">
+                            <span class="iconify mr-2 text-cyan-400" data-icon="mdi:account-switch"></span>人机协同机制
+                        </h3>
+                        <div class="space-y-3 text-sm text-gray-300">
+                            <div class="flex items-start gap-3">
+                                <span class="iconify text-green-400 text-lg mt-0.5" data-icon="mdi:robot-happy"></span>
+                                <div><strong>机器人自动回复</strong>：知识库命中且置信度 > 60% 时，直接回复访客</div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="iconify text-yellow-400 text-lg mt-0.5" data-icon="mdi:alert-circle-outline"></span>
+                                <div><strong>待确认回复</strong>：置信度 40%-60%，机器人回复但标记为"低置信"，记入审查队列</div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="iconify text-red-400 text-lg mt-0.5" data-icon="mdi:account-alert"></span>
+                                <div><strong>转人工</strong>：置信度 < 40% 或触发转人工关键词，自动创建转人工工单</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 上线准备清单 -->
+                    <div class="glass-morphism p-8 rounded-3xl">
+                        <h3 class="text-lg font-bold mb-4 flex items-center">
+                            <span class="iconify mr-2 text-cyan-400" data-icon="mdi:clipboard-check-outline"></span>上线需要准备
+                        </h3>
+                        <div class="space-y-2 text-sm text-gray-300">
+                            <div class="flex items-center gap-2"><span class="iconify text-cyan-400" data-icon="mdi:file-document-outline"></span> FAQ 文档或常见问题列表</div>
+                            <div class="flex items-center gap-2"><span class="iconify text-cyan-400" data-icon="mdi:palette-swatch"></span> 品牌语气设定（如：专业、友善、活泼）</div>
+                            <div class="flex items-center gap-2"><span class="iconify text-cyan-400" data-icon="mdi:shield-alert-outline"></span> 禁答规则（如：不能承诺退款）</div>
+                            <div class="flex items-center gap-2"><span class="iconify text-cyan-400" data-icon="mdi:email-outline"></span> 人工接管联系方式（邮箱或坐席账号）</div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-3">预计上线时间：购买后 30 分钟内完成配置</p>
+                    </div>
+                    ` : ''}
 
                     <!-- 能力指标 -->
                     <div class="glass-morphism p-8 rounded-3xl">
@@ -234,16 +301,40 @@
                     </div>
                 </div>
 
-                <!-- 右侧：租赁面板 -->
+                <!-- 右侧：租赁/订阅面板 -->
                 <div class="space-y-6">
                     <div class="glass-morphism p-8 rounded-3xl sticky top-28">
+                        ${w.worker_type === 'agent' ? `
+                        <!-- Agent 类型：套餐选择 -->
+                        <h3 class="text-lg font-bold mb-4">选择套餐</h3>
+                        <div id="plans-container" class="space-y-3 mb-6">
+                            <div class="text-center py-4 text-gray-500 text-sm">加载套餐中...</div>
+                        </div>
+                        <div class="bg-white/5 rounded-xl p-4 mb-6">
+                            <div class="flex justify-between text-sm mb-2">
+                                <span class="text-gray-400">套餐</span>
+                                <span id="display-plan-name">-</span>
+                            </div>
+                            <div class="flex justify-between text-sm mb-2">
+                                <span class="text-gray-400">计费周期</span>
+                                <span>月付</span>
+                            </div>
+                            <div class="border-t border-white/10 my-3"></div>
+                            <div class="flex justify-between font-bold text-lg">
+                                <span>合计</span>
+                                <span class="text-gradient" id="display-total">-</span>
+                            </div>
+                        </div>
+                        <button onclick="goSubscribe()" class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition flex items-center justify-center">
+                            <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>立即订阅
+                        </button>
+                        ` : `
+                        <!-- 通用类型：按时长租赁 -->
                         <h3 class="text-lg font-bold mb-6">租赁方案</h3>
                         <div class="mb-6">
                             <p class="text-xs text-gray-500 mb-1">${esc(w.billing_unit)}</p>
                             <p class="text-4xl font-bold text-gradient">￥${w.hourly_rate.toFixed(2)}</p>
                         </div>
-
-                        <!-- 快捷时长 -->
                         <div class="mb-6">
                             <p class="text-sm text-gray-400 mb-3">选择租赁时长</p>
                             <div class="grid grid-cols-2 gap-2" id="duration-btns">
@@ -253,14 +344,10 @@
                                 <button onclick="setDuration(event,720)" class="dur-btn border border-white/10 rounded-xl py-3 text-sm hover:border-[#6A0DAD] transition">1 月</button>
                             </div>
                         </div>
-
-                        <!-- 自定义时长 -->
                         <div class="mb-6">
                             <label class="text-sm text-gray-400 mb-2 block">自定义时长（小时）</label>
                             <input id="custom-hours" type="number" min="1" max="8760" value="24" oninput="updatePrice()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition"/>
                         </div>
-
-                        <!-- 预计费用 -->
                         <div class="bg-white/5 rounded-xl p-4 mb-6">
                             <div class="flex justify-between text-sm mb-2">
                                 <span class="text-gray-400">单价</span>
@@ -276,10 +363,10 @@
                                 <span class="text-gradient" id="display-total">￥${(w.hourly_rate * 24).toFixed(2)}</span>
                             </div>
                         </div>
-
                         <button onclick="goRent()" class="w-full bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold text-lg btn-glow transition flex items-center justify-center">
                             <span class="iconify mr-2" data-icon="mdi:cart-plus"></span>立即租赁
                         </button>
+                        `}
                         ${favoriteButtonHtml}
                         <p class="text-[10px] text-gray-600 text-center mt-3">支持随时取消未开始的订单</p>
                     </div>
@@ -287,11 +374,14 @@
             </div>
         `;
 
-        // After rendering, load reviews, favorite status, and recommendations
+        // After rendering, load reviews, favorite status, recommendations, and plans
         loadReviews(1);
         loadRecommendations();
         if (token) {
             checkFavoriteStatus();
+        }
+        if (w.worker_type === 'agent') {
+            loadPlans(w.id);
         }
     }
 
@@ -513,6 +603,85 @@
             </a>
         `;
         }).join('');
+    }
+
+    // ==================== Plans (Agent type) ====================
+    let plansData = [];
+    let selectedPlanId = null;
+
+    async function loadPlans(wid) {
+        const container = document.getElementById('plans-container');
+        if (!container) return;
+        try {
+            const res = await fetch(`/api/workers/${wid}/plans`);
+            if (!res.ok) throw new Error('failed');
+            const data = await res.json();
+            plansData = data.plans || [];
+            renderPlans();
+        } catch(e) {
+            container.innerHTML = '<div class="text-center py-4 text-gray-500 text-sm">暂无套餐</div>';
+        }
+    }
+
+    function renderPlans() {
+        const container = document.getElementById('plans-container');
+        if (!container || plansData.length === 0) return;
+
+        container.innerHTML = plansData.map((p, i) => {
+            const isPopular = i === 1; // Pro 为推荐
+            return `
+                <div onclick="selectPlan(${p.id})" id="plan-${p.id}"
+                     class="plan-card border ${isPopular ? 'border-[#6A0DAD] bg-[#6A0DAD]/10' : 'border-white/10'} rounded-xl p-4 cursor-pointer hover:border-[#6A0DAD] transition relative">
+                    ${isPopular ? '<span class="absolute -top-2 right-3 bg-[#6A0DAD] text-[10px] px-2 py-0.5 rounded-full font-bold">推荐</span>' : ''}
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold">${esc(p.name)}</span>
+                        <span class="text-gradient font-bold">￥${p.price.toFixed(0)}<span class="text-xs text-gray-400 font-normal">/月</span></span>
+                    </div>
+                    <div class="text-xs text-gray-400 space-y-1">
+                        <div>${p.session_quota} 次会话/月 · ${p.knowledge_base_limit} 个知识库 · ${p.channel_limit} 个渠道 · ${p.seat_limit} 个坐席</div>
+                    </div>
+                    ${p.features && p.features.length > 0 ? `
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        ${p.features.slice(0, 4).map(f => `<span class="text-[10px] bg-white/5 px-2 py-0.5 rounded text-gray-400">${esc(f)}</span>`).join('')}
+                        ${p.features.length > 4 ? `<span class="text-[10px] text-gray-500">+${p.features.length - 4}</span>` : ''}
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+
+        // Auto-select the recommended plan or first plan
+        const defaultPlan = plansData.length > 1 ? plansData[1] : plansData[0];
+        selectPlan(defaultPlan.id);
+    }
+
+    function selectPlan(planId) {
+        selectedPlanId = planId;
+        const plan = plansData.find(p => p.id === planId);
+        if (!plan) return;
+
+        // Update UI
+        document.querySelectorAll('.plan-card').forEach(el => {
+            el.classList.remove('border-[#6A0DAD]', 'bg-[#6A0DAD]/10');
+            el.classList.add('border-white/10');
+        });
+        const el = document.getElementById('plan-' + planId);
+        if (el) {
+            el.classList.add('border-[#6A0DAD]', 'bg-[#6A0DAD]/10');
+            el.classList.remove('border-white/10');
+        }
+
+        const nameEl = document.getElementById('display-plan-name');
+        const totalEl = document.getElementById('display-total');
+        if (nameEl) nameEl.textContent = plan.name;
+        if (totalEl) totalEl.textContent = '￥' + plan.price.toFixed(2);
+    }
+
+    function goSubscribe() {
+        const token = localStorage.getItem('xiaxia_token');
+        if (!token) { window.location.href = 'login.html'; return; }
+        if (!selectedPlanId) { alert('请先选择套餐'); return; }
+        window.location.href = `order-create.html?worker_id=${workerId}&plan_id=${selectedPlanId}&type=subscription`;
     }
 
     // ==================== Rental ====================

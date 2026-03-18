@@ -37,6 +37,7 @@
             <a class="hover:text-white transition" href="index.html">首页</a>
             <a class="hover:text-white transition" href="workers.html">数职市场</a>
             <a class="text-white transition" href="orders.html">我的订单</a>
+            <a class="hover:text-white transition" href="my-bots.html">我的机器人</a>
         </div>
     </div>
 </nav>
@@ -158,8 +159,13 @@ async function loadOrder() {
     document.getElementById('worker-icon').dataset.icon = order.worker_icon || 'mdi:robot-happy-outline';
     document.getElementById('worker-name').textContent = order.worker_name;
     document.getElementById('order-no').textContent = order.order_no;
-    document.getElementById('duration').textContent = order.duration_hours + ' 小时';
-    document.getElementById('unit-price').textContent = '￥' + (order.total_amount / order.duration_hours).toFixed(2) + '/h';
+    if (order.order_type === 'subscription') {
+        document.getElementById('duration').textContent = '月付订阅';
+        document.getElementById('unit-price').textContent = '套餐月费';
+    } else {
+        document.getElementById('duration').textContent = order.duration_hours + ' 小时';
+        document.getElementById('unit-price').textContent = '￥' + (order.total_amount / order.duration_hours).toFixed(2) + '/h';
+    }
     document.getElementById('remark').textContent = order.remark || '无';
     document.getElementById('total-amount').textContent = '￥' + order.total_amount.toFixed(2);
 
@@ -189,9 +195,35 @@ async function doPay() {
             return;
         }
 
+        // 订阅订单：自动创建部署并跳转到配置向导
+        const isSubscription = order && order.order_type === 'subscription';
+        if (isSubscription) {
+            try {
+                const deployRes = await fetch('/api/deployments', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_id: parseInt(orderId) }),
+                });
+                if (deployRes.ok) {
+                    const deployData = await deployRes.json();
+                    const deployId = deployData.deployment ? deployData.deployment.id : null;
+                    document.getElementById('link-detail').href = deployId
+                        ? `deployment-setup.html?deployment_id=${deployId}&order_id=${orderId}`
+                        : `order-detail.html?order_id=${orderId}`;
+                    document.getElementById('success-msg').textContent = '支付成功！即将进入机器人配置向导...';
+                    setTimeout(() => {
+                        window.location.href = deployId
+                            ? `deployment-setup.html?deployment_id=${deployId}&order_id=${orderId}`
+                            : `order-detail.html?order_id=${orderId}`;
+                    }, 3000);
+                    document.getElementById('success-modal').classList.remove('hidden');
+                    return;
+                }
+            } catch(e) { /* fallback to order detail */ }
+        }
+
         document.getElementById('link-detail').href = `order-detail.html?order_id=${orderId}`;
         document.getElementById('success-modal').classList.remove('hidden');
-        // 5秒后自动跳转到订单详情
         let countdown = 5;
         const countdownEl = document.getElementById('success-msg');
         countdownEl.textContent = `支付成功！${countdown}秒后自动跳转到订单详情...`;

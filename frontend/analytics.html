@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>部署分析 | 虾虾工厂</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050714; color: #ffffff; }
+        .glass-morphism { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .text-gradient { background: linear-gradient(90deg, #6A0DAD, #00D2FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .toast { position: fixed; top: 80px; right: 20px; z-index: 999; padding: 12px 24px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; }
+        .toast-ok { background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; }
+        .toast-err { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .metric-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; transition: all 0.3s ease; }
+        .metric-card:hover { border-color: rgba(106,13,173,0.4); transform: translateY(-2px); }
+        .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 180px; }
+        .bar-chart .bar { flex: 1; min-width: 4px; background: linear-gradient(180deg, #6A0DAD, #00D2FF); border-radius: 3px 3px 0 0; transition: height 0.4s ease, opacity 0.3s; opacity: 0.7; position: relative; cursor: pointer; }
+        .bar-chart .bar:hover { opacity: 1; }
+        .bar-chart .bar .bar-tooltip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); border: 1px solid rgba(255,255,255,0.15); padding: 4px 8px; border-radius: 6px; font-size: 11px; white-space: nowrap; pointer-events: none; margin-bottom: 4px; }
+        .bar-chart .bar:hover .bar-tooltip { display: block; }
+        .period-btn { padding: 6px 16px; border-radius: 9999px; font-size: 13px; font-weight: 600; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: rgba(255,255,255,0.5); cursor: pointer; }
+        .period-btn:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+        .period-btn.active { background: linear-gradient(135deg, #6A0DAD, #8A2BE2); color: #fff; border-color: transparent; }
+        .status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+    </style>
+</head>
+<body class="overflow-x-hidden min-h-screen">
+<nav class="fixed top-0 w-full z-50 glass-morphism px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-10">
+        <a class="flex items-center space-x-2" href="index.html">
+            <span class="iconify text-3xl text-[#6A0DAD]" data-icon="mdi:shrimp"></span>
+            <span class="text-2xl font-bold tracking-tighter uppercase">虾虾工厂 <span class="text-xs font-light text-cyan-400">XiaXia.Factory</span></span>
+        </a>
+        <div class="hidden lg:flex items-center space-x-8 text-sm font-medium text-gray-300">
+            <a class="hover:text-white transition" href="index.html">首页</a>
+            <a class="hover:text-white transition" href="workers.html">数职市场</a>
+            <a class="hover:text-white transition" href="orders.html">我的订单</a>
+        </div>
+    </div>
+    <div class="flex items-center space-x-4" id="nav-auth">
+        <a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>个人中心</a>
+        <a class="text-sm font-medium" href="login.html">登录</a>
+        <a class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-6 py-2 rounded-full text-sm font-bold transition" href="register.html">立即注册</a>
+    </div>
+</nav>
+
+<main class="pt-24 pb-16 px-4 max-w-6xl mx-auto">
+    <div id="loading" class="text-center py-20 text-gray-500">加载中...</div>
+    <div id="content" class="hidden">
+        <!-- Deployment header -->
+        <div class="glass-morphism rounded-2xl p-6 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-[#6A0DAD] to-[#00D2FF] flex items-center justify-center">
+                    <span class="iconify text-2xl" data-icon="mdi:robot-happy-outline"></span>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold" id="deploy-name"></h1>
+                    <div class="flex items-center gap-3 mt-1">
+                        <span id="deploy-status" class="status-badge"></span>
+                        <span id="deploy-plan" class="text-xs text-gray-500"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-2" id="period-selector">
+                <button class="period-btn" data-days="7" onclick="changePeriod(7)">7天</button>
+                <button class="period-btn" data-days="14" onclick="changePeriod(14)">14天</button>
+                <button class="period-btn active" data-days="30" onclick="changePeriod(30)">30天</button>
+            </div>
+        </div>
+
+        <!-- Metrics cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+            <div class="metric-card p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="iconify text-lg text-cyan-400" data-icon="mdi:forum-outline"></span>
+                    <span class="text-xs text-gray-500">总会话数</span>
+                </div>
+                <p class="text-2xl font-bold" id="m-sessions">--</p>
+            </div>
+            <div class="metric-card p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="iconify text-lg text-blue-400" data-icon="mdi:message-text-outline"></span>
+                    <span class="text-xs text-gray-500">总消息数</span>
+                </div>
+                <p class="text-2xl font-bold" id="m-messages">--</p>
+            </div>
+            <div class="metric-card p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="iconify text-lg text-orange-400" data-icon="mdi:swap-horizontal"></span>
+                    <span class="text-xs text-gray-500">总转人工</span>
+                </div>
+                <p class="text-2xl font-bold" id="m-handoffs">--</p>
+            </div>
+            <div class="metric-card p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="iconify text-lg text-green-400" data-icon="mdi:check-decagram-outline"></span>
+                    <span class="text-xs text-gray-500">解决率</span>
+                </div>
+                <p class="text-2xl font-bold" id="m-resolution">--</p>
+            </div>
+            <div class="metric-card p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="iconify text-lg text-red-400" data-icon="mdi:percent-outline"></span>
+                    <span class="text-xs text-gray-500">转人工率</span>
+                </div>
+                <p class="text-2xl font-bold" id="m-handoff-rate">--</p>
+            </div>
+            <div class="metric-card p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="iconify text-lg text-yellow-400" data-icon="mdi:star-outline"></span>
+                    <span class="text-xs text-gray-500">平均满意度</span>
+                </div>
+                <p class="text-2xl font-bold" id="m-satisfaction">--</p>
+            </div>
+        </div>
+
+        <!-- Daily trend chart -->
+        <div class="glass-morphism rounded-2xl p-6">
+            <h2 class="text-sm font-bold text-gray-400 mb-1">每日会话趋势</h2>
+            <p class="text-xs text-gray-600 mb-5" id="chart-subtitle"></p>
+            <div class="bar-chart" id="bar-chart"></div>
+            <div class="flex justify-between mt-2 text-[10px] text-gray-600">
+                <span id="chart-start"></span>
+                <span id="chart-end"></span>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+const token = localStorage.getItem('xiaxia_token');
+if (!token) window.location.href = 'login.html';
+
+const params = new URLSearchParams(window.location.search);
+const deploymentId = params.get('deployment_id');
+if (!deploymentId) { window.location.href = 'index.html'; }
+
+let currentDays = 30;
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function check401(res) {
+    if (res.status === 401) {
+        localStorage.removeItem('xiaxia_token');
+        localStorage.removeItem('xiaxia_user');
+        window.location.href = 'login.html';
+        return true;
+    }
+    return false;
+}
+
+function toast(msg, ok) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
+function formatNum(n) {
+    if (n == null) return '--';
+    if (n >= 10000) return (n / 10000).toFixed(1) + '万';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return String(n);
+}
+
+// Nav auth state
+(function() {
+    const userStr = localStorage.getItem('xiaxia_user');
+    if (token && userStr) {
+        try {
+            const user = JSON.parse(userStr);
+            const navAuth = document.getElementById('nav-auth');
+            navAuth.innerHTML = '<a class="text-sm hover:text-white px-4 py-2 transition" href="profile.html"><span class="iconify inline mr-1" data-icon="mdi:account-outline"></span>' + esc(user.username) + '</a>' +
+                '<button onclick="logout()" class="text-sm font-medium text-red-400 hover:text-red-300 transition">退出</button>';
+        } catch(e) {}
+    }
+})();
+
+function logout() {
+    localStorage.removeItem('xiaxia_token');
+    localStorage.removeItem('xiaxia_user');
+    window.location.href = 'login.html';
+}
+
+async function loadDeployment() {
+    const res = await fetch('/api/deployments/' + encodeURIComponent(deploymentId), {
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (check401(res)) return;
+    if (!res.ok) {
+        toast('部署不存在', false);
+        return;
+    }
+    const d = await res.json();
+    const dep = d.deployment || d;
+
+    document.getElementById('deploy-name').textContent = dep.bot_name || dep.name || '未命名';
+
+    const statusEl = document.getElementById('deploy-status');
+    const statusColors = {
+        active: 'background: rgba(34,197,94,0.15); color: #22c55e;',
+        paused: 'background: rgba(250,204,21,0.15); color: #facc15;',
+        stopped: 'background: rgba(239,68,68,0.15); color: #ef4444;',
+    };
+    const statusLabels = { active: '运行中', paused: '已暂停', stopped: '已停止' };
+    const st = dep.status || 'active';
+    statusEl.style.cssText = statusColors[st] || statusColors.active;
+    statusEl.textContent = statusLabels[st] || st;
+
+    const planEl = document.getElementById('deploy-plan');
+    planEl.textContent = dep.plan ? ('套餐: ' + esc(dep.plan)) : '';
+}
+
+async function loadMetrics(days) {
+    const res = await fetch('/api/deployments/' + encodeURIComponent(deploymentId) + '/metrics?days=' + days, {
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (check401(res)) return;
+    if (!res.ok) {
+        toast('加载指标失败', false);
+        return;
+    }
+    const d = await res.json();
+    const m = d.metrics || d.summary || d;
+
+    // Populate metric cards
+    const totalSessions = m.total_sessions ?? 0;
+    const totalMessages = m.total_messages ?? 0;
+    const totalHandoffs = m.total_handoffs ?? 0;
+    const resolutionRate = m.resolution_rate ?? 0;
+    const handoffRate = m.handoff_rate ?? (totalSessions > 0 ? (totalHandoffs / totalSessions * 100) : 0);
+    const avgSatisfaction = m.avg_satisfaction ?? m.average_satisfaction ?? 0;
+
+    document.getElementById('m-sessions').textContent = formatNum(totalSessions);
+    document.getElementById('m-messages').textContent = formatNum(totalMessages);
+    document.getElementById('m-handoffs').textContent = formatNum(totalHandoffs);
+    document.getElementById('m-resolution').textContent = resolutionRate.toFixed(1) + '%';
+    document.getElementById('m-handoff-rate').textContent = handoffRate.toFixed(1) + '%';
+    document.getElementById('m-satisfaction').textContent = avgSatisfaction.toFixed(1);
+
+    // Render bar chart from daily data
+    const daily = m.daily || d.daily || [];
+    renderBarChart(daily, days);
+}
+
+function renderBarChart(daily, days) {
+    const container = document.getElementById('bar-chart');
+    if (!daily || daily.length === 0) {
+        container.innerHTML = '<p class="text-gray-600 text-sm m-auto">暂无每日数据</p>';
+        document.getElementById('chart-start').textContent = '';
+        document.getElementById('chart-end').textContent = '';
+        document.getElementById('chart-subtitle').textContent = '近 ' + days + ' 天';
+        return;
+    }
+
+    const maxVal = Math.max(...daily.map(d => d.session_count || 0), 1);
+
+    container.innerHTML = daily.map(function(item) {
+        const count = item.session_count || 0;
+        const heightPct = (count / maxVal) * 100;
+        const minH = count > 0 ? Math.max(heightPct, 3) : 1;
+        const dateStr = item.date || '';
+        const shortDate = dateStr.length >= 10 ? dateStr.substring(5) : dateStr;
+        return '<div class="bar" style="height:' + minH + '%">' +
+            '<div class="bar-tooltip">' + esc(shortDate) + ': ' + count + ' 会话</div>' +
+            '</div>';
+    }).join('');
+
+    const firstDate = daily[0].date || '';
+    const lastDate = daily[daily.length - 1].date || '';
+    document.getElementById('chart-start').textContent = firstDate.length >= 10 ? firstDate.substring(5) : firstDate;
+    document.getElementById('chart-end').textContent = lastDate.length >= 10 ? lastDate.substring(5) : lastDate;
+    document.getElementById('chart-subtitle').textContent = '近 ' + days + ' 天 (最高 ' + maxVal + ' 会话/天)';
+}
+
+function changePeriod(days) {
+    currentDays = days;
+    document.querySelectorAll('.period-btn').forEach(function(btn) {
+        btn.classList.toggle('active', Number(btn.dataset.days) === days);
+    });
+    loadMetrics(days);
+}
+
+async function init() {
+    try {
+        await loadDeployment();
+        await loadMetrics(currentDays);
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+    } catch(e) {
+        toast('加载失败: ' + e.message, false);
+    }
+}
+
+init();
+</script>
+</body>
+</html>

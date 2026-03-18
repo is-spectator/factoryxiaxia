@@ -3,7 +3,7 @@ import datetime
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import (Order, Worker, Payment, Review, Message,
-                    Favorite, ORDER_TRANSITIONS)
+                    Favorite, ServicePlan, ORDER_TRANSITIONS)
 from utils.auth import get_current_user, require_admin
 from utils.helpers import generate_order_no, generate_payment_no
 from services.messages import send_message
@@ -43,7 +43,18 @@ def create_order():
     if worker.status == "offline":
         return jsonify({"error": "该数字员工当前不可用"}), 400
 
-    total_amount = round(float(worker.hourly_rate) * duration_hours, 2)
+    # 订阅模式：使用套餐价格
+    order_type = data.get("order_type", "rental")
+    service_plan_id = data.get("service_plan_id")
+    plan = None
+
+    if order_type == "subscription" and service_plan_id:
+        plan = ServicePlan.query.get(service_plan_id)
+        if not plan or plan.worker_id != worker.id or not plan.is_active:
+            return jsonify({"error": "套餐不存在或不可用"}), 400
+        total_amount = float(plan.price)
+    else:
+        total_amount = round(float(worker.hourly_rate) * duration_hours, 2)
 
     order = Order(
         order_no=generate_order_no(),
@@ -51,6 +62,8 @@ def create_order():
         worker_id=worker.id,
         duration_hours=duration_hours,
         total_amount=total_amount,
+        order_type=order_type,
+        service_plan_id=plan.id if plan else None,
         status="pending",
         remark=remark,
     )

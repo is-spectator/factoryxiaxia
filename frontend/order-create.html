@@ -30,6 +30,7 @@
             <a class="hover:text-white transition" href="index.html">首页</a>
             <a class="hover:text-white transition" href="workers.html">数职市场</a>
             <a class="hover:text-white transition" href="orders.html">我的订单</a>
+            <a class="hover:text-white transition" href="my-bots.html">我的机器人</a>
         </div>
     </div>
     <div class="flex items-center space-x-4" id="nav-auth">
@@ -74,8 +75,11 @@
     const params = new URLSearchParams(window.location.search);
     const workerId = params.get('worker_id');
     const defaultHours = parseInt(params.get('hours')) || 24;
+    const planIdParam = params.get('plan_id');
+    const orderType = params.get('type') || 'rental'; // rental or subscription
 
     let workerData = null;
+    let planData = null;
 
     async function init() {
         if (!workerId) {
@@ -87,38 +91,114 @@
             if (!res.ok) throw new Error();
             const data = await res.json();
             workerData = data.worker;
+
+            // 如果是订阅类型，加载套餐
+            if (orderType === 'subscription' && planIdParam) {
+                const planRes = await fetch(`/api/workers/${workerId}/plans`);
+                if (planRes.ok) {
+                    const planList = await planRes.json();
+                    planData = (planList.plans || []).find(p => p.id == planIdParam);
+                }
+            }
+
             render();
         } catch(e) {
             document.getElementById('order-content').innerHTML = '<div class="text-center py-20 text-red-400">员工信息加载失败</div>';
         }
     }
 
+    function esc(str) { if (str == null) return ''; const div = document.createElement('div'); div.appendChild(document.createTextNode(String(str))); return div.innerHTML; }
+
     function render() {
         const w = workerData;
-        const total = (w.hourly_rate * defaultHours).toFixed(2);
+        const isSubscription = orderType === 'subscription' && planData;
+        const total = isSubscription ? planData.price.toFixed(2) : (w.hourly_rate * defaultHours).toFixed(2);
+
+        document.title = isSubscription ? '确认订阅 | 虾虾工厂' : '确认租赁 | 虾虾工厂';
+
         document.getElementById('order-content').innerHTML = `
             <div class="glass-morphism p-8 rounded-3xl mb-6">
                 <h2 class="text-xl font-bold mb-6 flex items-center">
-                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:robot-happy-outline"></span>租赁员工
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="${isSubscription ? 'mdi:robot-happy' : 'mdi:robot-happy-outline'}"></span>${isSubscription ? '订阅员工' : '租赁员工'}
                 </h2>
                 <div class="flex items-center gap-4 mb-6">
                     <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, ${w.avatar_gradient_from}, ${w.avatar_gradient_to})">
-                        <span class="iconify text-3xl" data-icon="${w.avatar_icon}"></span>
+                        <span class="iconify text-3xl" data-icon="${esc(w.avatar_icon)}"></span>
                     </div>
                     <div>
-                        <h3 class="font-bold text-lg">${w.name}</h3>
-                        <p class="text-sm text-gray-400">${w.category_name} · Lv.${w.level}</p>
+                        <h3 class="font-bold text-lg">${esc(w.name)}</h3>
+                        <p class="text-sm text-gray-400">${esc(w.category_name)} · Lv.${w.level}</p>
                     </div>
                     <div class="ml-auto text-right">
-                        <p class="text-xs text-gray-500">${w.billing_unit}</p>
-                        <p class="text-xl font-bold">￥${w.hourly_rate.toFixed(2)}</p>
+                        ${isSubscription ? `
+                            <p class="text-xs text-gray-500">套餐</p>
+                            <p class="text-xl font-bold">${esc(planData.name)}</p>
+                        ` : `
+                            <p class="text-xs text-gray-500">${esc(w.billing_unit)}</p>
+                            <p class="text-xl font-bold">￥${w.hourly_rate.toFixed(2)}</p>
+                        `}
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    ${w.skills.map(s => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${s}</span>`).join('')}
+                    ${w.skills.map(s => `<span class="bg-white/5 border border-white/10 text-xs px-3 py-1 rounded-full">${esc(s)}</span>`).join('')}
                 </div>
             </div>
 
+            ${isSubscription ? `
+            <!-- 订阅模式：套餐详情 -->
+            <div class="glass-morphism p-8 rounded-3xl mb-6">
+                <h2 class="text-xl font-bold mb-6 flex items-center">
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:package-variant"></span>套餐内容 · ${esc(planData.name)}
+                </h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white/5 rounded-xl p-4 text-center">
+                        <p class="text-2xl font-bold text-cyan-400">${planData.session_quota}</p>
+                        <p class="text-xs text-gray-400 mt-1">会话/月</p>
+                    </div>
+                    <div class="bg-white/5 rounded-xl p-4 text-center">
+                        <p class="text-2xl font-bold text-cyan-400">${planData.knowledge_base_limit}</p>
+                        <p class="text-xs text-gray-400 mt-1">知识库</p>
+                    </div>
+                    <div class="bg-white/5 rounded-xl p-4 text-center">
+                        <p class="text-2xl font-bold text-cyan-400">${planData.channel_limit}</p>
+                        <p class="text-xs text-gray-400 mt-1">渠道数</p>
+                    </div>
+                    <div class="bg-white/5 rounded-xl p-4 text-center">
+                        <p class="text-2xl font-bold text-cyan-400">${planData.seat_limit}</p>
+                        <p class="text-xs text-gray-400 mt-1">人工坐席</p>
+                    </div>
+                </div>
+                ${planData.features && planData.features.length > 0 ? `
+                <div class="space-y-2">
+                    ${planData.features.map(f => `
+                        <div class="flex items-center gap-2 text-sm text-gray-300">
+                            <span class="iconify text-green-400" data-icon="mdi:check-circle"></span>${esc(f)}
+                        </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+            </div>
+
+            <!-- 上线清单确认 -->
+            <div class="glass-morphism p-8 rounded-3xl mb-6">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:clipboard-list-outline"></span>上线准备确认
+                </h2>
+                <p class="text-sm text-gray-400 mb-4">支付后将进入部署配置向导，请确认您已准备好以下资料：</p>
+                <div class="space-y-3">
+                    <label class="flex items-center gap-3 text-sm text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="checklist-item accent-[#6A0DAD] w-4 h-4" checked> FAQ 文档或常见问题列表
+                    </label>
+                    <label class="flex items-center gap-3 text-sm text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="checklist-item accent-[#6A0DAD] w-4 h-4"> 品牌语气设定
+                    </label>
+                    <label class="flex items-center gap-3 text-sm text-gray-300 cursor-pointer">
+                        <input type="checkbox" class="checklist-item accent-[#6A0DAD] w-4 h-4"> 人工接管联系方式
+                    </label>
+                </div>
+            </div>
+            ` : `
+            <!-- 租赁模式：时长选择 -->
             <div class="glass-morphism p-8 rounded-3xl mb-6">
                 <h2 class="text-xl font-bold mb-6 flex items-center">
                     <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:timer-outline"></span>租赁配置
@@ -135,9 +215,18 @@
                 </div>
                 <div>
                     <label class="text-sm text-gray-400 mb-2 block">备注（选填）</label>
-                    <textarea id="order-remark" rows="3" placeholder="描述您的需求，以便数字员工更好地为您服务..." class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition resize-none"></textarea>
+                    <textarea id="order-remark" rows="3" placeholder="描述您的需求..." class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition resize-none"></textarea>
                 </div>
             </div>
+            `}
+
+            <!-- 备注（订阅模式） -->
+            ${isSubscription ? `
+            <div class="glass-morphism p-8 rounded-3xl mb-6">
+                <label class="text-sm text-gray-400 mb-2 block">备注（选填）</label>
+                <textarea id="order-remark" rows="3" placeholder="描述您的需求或特殊要求..." class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition resize-none"></textarea>
+            </div>
+            ` : ''}
 
             <!-- 费用汇总 -->
             <div class="glass-morphism p-8 rounded-3xl mb-8">
@@ -145,6 +234,20 @@
                     <span class="iconify mr-2 text-[#6A0DAD]" data-icon="mdi:receipt-text-outline"></span>费用明细
                 </h2>
                 <div class="space-y-3 text-sm">
+                    ${isSubscription ? `
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">套餐</span>
+                        <span>${esc(planData.name)}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">计费周期</span>
+                        <span>月付</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">包含会话</span>
+                        <span>${planData.session_quota} 次/月</span>
+                    </div>
+                    ` : `
                     <div class="flex justify-between">
                         <span class="text-gray-400">员工单价</span>
                         <span>￥${w.hourly_rate.toFixed(2)} / 小时</span>
@@ -153,6 +256,7 @@
                         <span class="text-gray-400">租赁时长</span>
                         <span id="sum-hours">${defaultHours} 小时</span>
                     </div>
+                    `}
                     <div class="border-t border-white/10 my-2"></div>
                     <div class="flex justify-between text-xl font-bold">
                         <span>应付总额</span>
@@ -164,10 +268,10 @@
             <div class="flex gap-4">
                 <a href="worker-detail.html?id=${w.id}" class="flex-1 border border-white/20 py-4 rounded-xl font-bold text-center hover:bg-white/5 transition">返回修改</a>
                 <button onclick="submitOrder()" id="submit-btn" class="flex-1 bg-[#6A0DAD] hover:bg-[#8A2BE2] py-4 rounded-xl font-bold btn-glow transition flex items-center justify-center">
-                    <span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单
+                    <span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>${isSubscription ? '确认订阅' : '确认下单'}
                 </button>
             </div>
-            <p class="text-[10px] text-gray-600 text-center mt-4">下单后订单状态为"待支付"，支持随时取消</p>
+            <p class="text-[10px] text-gray-600 text-center mt-4">${isSubscription ? '支付后将进入部署配置向导' : '下单后订单状态为"待支付"，支持随时取消'}</p>
         `;
     }
 
@@ -186,8 +290,21 @@
         btn.disabled = true;
         btn.innerHTML = '<span class="iconify mr-2 animate-spin" data-icon="mdi:loading"></span>提交中...';
 
-        const hours = parseInt(document.getElementById('order-hours').value) || 24;
-        const remark = document.getElementById('order-remark').value.trim();
+        const isSubscription = orderType === 'subscription' && planData;
+        const remark = (document.getElementById('order-remark') || {}).value || '';
+
+        const body = {
+            worker_id: parseInt(workerId),
+            remark: remark.trim(),
+        };
+
+        if (isSubscription) {
+            body.duration_hours = 720; // 月付 = 720 小时
+            body.order_type = 'subscription';
+            body.service_plan_id = planData.id;
+        } else {
+            body.duration_hours = parseInt(document.getElementById('order-hours').value) || 24;
+        }
 
         try {
             const res = await fetch('/api/orders', {
@@ -196,22 +313,21 @@
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + token,
                 },
-                body: JSON.stringify({ worker_id: parseInt(workerId), duration_hours: hours, remark: remark }),
+                body: JSON.stringify(body),
             });
             if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
             const data = await res.json();
             if (!res.ok) {
                 toast(data.error || '下单失败', false);
                 btn.disabled = false;
-                btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单';
+                btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>' + (isSubscription ? '确认订阅' : '确认下单');
                 return;
             }
-            // 成功 - 跳转到支付页面
             window.location.href = `pay.html?order_id=${data.order.id}`;
         } catch(e) {
             toast('网络错误，请重试', false);
             btn.disabled = false;
-            btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>确认下单';
+            btn.innerHTML = '<span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>' + (isSubscription ? '确认订阅' : '确认下单');
         }
     }
 
