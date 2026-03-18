@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify
 from extensions import db
 from models import (User, Worker, Category, Order, ROLES,
                     ORDER_STATUSES, ORDER_TRANSITIONS, AgentTemplate,
-                    ServicePlan, Deployment)
+                    ServicePlan, Deployment, AuditLog)
 from utils.auth import require_admin
 from services.messages import send_message
 
@@ -369,6 +369,38 @@ def admin_list_deployments():
         query = query.filter_by(status=status)
     deployments = query.order_by(Deployment.created_at.desc()).all()
     return jsonify({"deployments": [d.to_dict() for d in deployments]}), 200
+
+
+@bp.route("/api/admin/audit-logs", methods=["GET"])
+def admin_list_audit_logs():
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    deployment_id = request.args.get("deployment_id", type=int)
+    action_type = request.args.get("action_type", type=str)
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 20, type=int)
+    per_page = min(per_page, 100)
+
+    query = AuditLog.query
+    if deployment_id:
+        query = query.filter_by(deployment_id=deployment_id)
+    if action_type:
+        query = query.filter_by(action_type=action_type)
+
+    pagination = query.order_by(AuditLog.created_at.desc()).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False,
+    )
+    return jsonify({
+        "audit_logs": [log.to_dict() for log in pagination.items],
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages,
+    }), 200
 
 
 @bp.route("/api/admin/orders", methods=["GET"])

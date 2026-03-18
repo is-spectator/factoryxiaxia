@@ -1,19 +1,27 @@
 """组织与机器人部署路由"""
 import datetime
-import json
 
 from flask import Blueprint, jsonify, request
 
 from extensions import db
 from models import (
     AgentTemplate,
+    AuditLog,
     Deployment,
     KnowledgeBase,
     KnowledgeDocument,
     Order,
     Organization,
 )
-from services.deployment_service import publish_deployment, user_can_manage_deployment
+from services.audit_service import record_audit
+from services.deployment_service import (
+    dump_deployment_config,
+    ensure_public_token,
+    load_deployment_config,
+    normalize_deployment_config,
+    publish_deployment,
+    user_can_manage_deployment,
+)
 from services.messages import send_message
 from utils.auth import get_current_user
 
@@ -94,6 +102,7 @@ def get_deployment_detail(deployment_id):
 
     payload = deployment.to_dict()
     payload["knowledge_bases"] = [knowledge_base.to_dict() for knowledge_base in deployment.knowledge_bases]
+    payload["audit_log_count"] = len(deployment.audit_logs)
     return jsonify({"deployment": payload}), 200
 
 
@@ -133,6 +142,7 @@ def create_deployment(order_id):
 
     if not isinstance(config, dict):
         return jsonify({"error": "config 必须是对象"}), 400
+    config = normalize_deployment_config(config)
 
     if organization_id:
         organization = Organization.query.filter_by(id=organization_id, owner_user_id=user.id).first()
@@ -152,11 +162,14 @@ def create_deployment(order_id):
         status="pending_setup",
         deployment_name=deployment_name,
         channel_type=channel_type,
-        config_json=json.dumps(config, ensure_ascii=False),
+        config_json="{}",
         started_at=now,
         expires_at=now + datetime.timedelta(hours=order.duration_hours),
     )
+    ensure_public_token(deployment)
+    deployment.config_json = dump_deployment_config(config, deployment=deployment)
     db.session.add(deployment)
+    db.session.flush()
 
     if order.status == "paid":
         order.status = "active"
@@ -169,8 +182,89 @@ def create_deployment(order_id):
         "system",
         order.id,
     )
+    record_audit(
+        action_type="deployment.created",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"创建部署实例 {deployment_name}",
+        details={
+            "order_id": order.id,
+            "organization_id": organization.id,
+            "channel_type": channel_type,
+        },
+    )
     db.session.commit()
     return jsonify({"message": "部署实例创建成功", "deployment": deployment.to_dict()}), 201
+
+
+@bp.route("/api/deployments/<int:deployment_id>/config", methods=["PUT"])
+def update_deployment_config(deployment_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    deployment = Deployment.query.get(deployment_id)
+    if not deployment:
+        return jsonify({"error": "部署实例不存在"}), 404
+    if not user_can_manage_deployment(user, deployment):
+        return jsonify({"error": "无权操作该部署实例"}), 403
+
+    data = request.get_json(silent=True) or {}
+    merged_config = load_deployment_config(deployment)
+    if isinstance(data, dict):
+        merged_config.update(data)
+    config = normalize_deployment_config(merged_config, deployment=deployment)
+    deployment.config_json = dump_deployment_config(config, deployment=deployment)
+    record_audit(
+        action_type="deployment.config_updated",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"更新部署配置 {deployment.deployment_name}",
+        details={
+            "brand_voice": config["brand_voice"],
+            "provider": config["provider"],
+            "forbidden_topics": config["forbidden_topics"],
+            "sensitive_keywords": config["sensitive_keywords"],
+            "pii_masking_enabled": config["pii_masking_enabled"],
+        },
+    )
+    db.session.commit()
+    return jsonify({"message": "配置已更新", "deployment": deployment.to_dict()}), 200
+
+
+@bp.route("/api/deployments/<int:deployment_id>/audit-logs", methods=["GET"])
+def list_deployment_audit_logs(deployment_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    deployment = Deployment.query.get(deployment_id)
+    if not deployment:
+        return jsonify({"error": "部署实例不存在"}), 404
+    if not user_can_manage_deployment(user, deployment):
+        return jsonify({"error": "无权查看该部署实例"}), 403
+
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 20, type=int)
+    per_page = min(per_page, 100)
+
+    pagination = AuditLog.query.filter_by(
+        deployment_id=deployment.id
+    ).order_by(
+        AuditLog.created_at.desc()
+    ).paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        "audit_logs": [log.to_dict() for log in pagination.items],
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages,
+    }), 200
 
 
 @bp.route("/api/deployments/<int:deployment_id>/knowledge-base", methods=["POST"])
@@ -250,6 +344,19 @@ def upload_knowledge_base(deployment_id):
         created_documents.append(document)
 
     db.session.commit()
+    record_audit(
+        action_type="knowledge.uploaded",
+        resource_type="knowledge_base",
+        resource_id=knowledge_base.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"上传知识库文档到 {knowledge_base.name}",
+        details={
+            "document_titles": [document.title for document in created_documents],
+            "document_count": len(created_documents),
+        },
+    )
+    db.session.commit()
     return jsonify({
         "message": "知识库文档上传成功，发布后生效",
         "knowledge_base": knowledge_base.to_dict(),
@@ -280,6 +387,18 @@ def publish_deployment_route(deployment_id):
         f"机器人「{deployment.deployment_name}」已发布上线，可开始对外提供服务。",
         "system",
         deployment.order_id,
+    )
+    record_audit(
+        action_type="deployment.published",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"发布机器人 {deployment.deployment_name}",
+        details={
+            "knowledge_base_count": len(knowledge_bases),
+            "public_token": deployment.public_token,
+        },
     )
     db.session.commit()
     return jsonify({

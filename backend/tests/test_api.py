@@ -519,6 +519,25 @@ class TestAdmin:
         data = json.loads(r.data)
         assert any(p["id"] == plan.id for p in data["service_plans"])
 
+    def test_admin_list_audit_logs(self, client, app_module, db):
+        make_admin(app_module, db)
+        owner_token, deployment_id, _, _ = create_agent_deployment(
+            client,
+            app_module,
+            db,
+            publish=True,
+            knowledge_content="我们支持 7x24 在线客服。",
+        )
+        client.post(f"/api/chat/{deployment_id}/message", json={
+            "message": "你们支持在线客服吗？",
+        })
+
+        token = login(client, "admin1")
+        r = client.get("/api/admin/audit-logs", headers=auth(token))
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert any(log["deployment_id"] == deployment_id for log in data["audit_logs"])
+
 
 class TestDeployments:
     def test_create_deployment_from_paid_order(self, client, app_module, db):
@@ -543,6 +562,7 @@ class TestDeployments:
         assert data["template_key"] == "support_responder_test"
         assert data["status"] == "pending_setup"
         assert data["organization_name"] == "testuser 的团队"
+        assert data["public_token"]
 
     def test_list_deployments_requires_auth(self, client):
         r = client.get("/api/deployments")
@@ -569,6 +589,24 @@ class TestDeployments:
         publish_data = json.loads(publish_res.data)
         assert publish_data["deployment"]["status"] == "active"
         assert publish_data["knowledge_bases"][0]["status"] == "active"
+
+    def test_update_deployment_config_and_list_audit_logs(self, client, app_module, db):
+        token, deployment_id, _, _ = create_agent_deployment(client, app_module, db, publish=True)
+        update_res = client.put(f"/api/deployments/{deployment_id}/config", headers=auth(token), json={
+            "brand_voice": "warm",
+            "forbidden_topics": ["退款"],
+            "sensitive_keywords": ["赔偿"],
+            "pii_masking_enabled": True,
+        })
+        assert update_res.status_code == 200
+        deployment = json.loads(update_res.data)["deployment"]
+        assert deployment["config"]["brand_voice"] == "warm"
+        assert deployment["config"]["forbidden_topics"] == ["退款"]
+
+        audit_res = client.get(f"/api/deployments/{deployment_id}/audit-logs", headers=auth(token))
+        assert audit_res.status_code == 200
+        audit_logs = json.loads(audit_res.data)["audit_logs"]
+        assert any(log["action_type"] == "deployment.config_updated" for log in audit_logs)
 
 
 class TestChat:
@@ -601,6 +639,41 @@ class TestChat:
         assert metrics["messages_in"] == 1
         assert metrics["messages_out"] == 1
         assert metrics["knowledge_hits"] >= 1
+
+    def test_public_chat_by_token_masks_pii_and_records_audit(self, client, app_module, db):
+        token, deployment_id, _, _ = create_agent_deployment(
+            client,
+            app_module,
+            db,
+            publish=True,
+            knowledge_content="请客户留下邮箱后，我们会安排人工联系。",
+        )
+        detail_res = client.get(f"/api/deployments/{deployment_id}", headers=auth(token))
+        public_token = json.loads(detail_res.data)["deployment"]["public_token"]
+
+        chat_res = client.post(f"/api/public/chat/{public_token}/message", json={
+            "message": "我的邮箱是 test@example.com，电话是13812345678",
+            "visitor_name": "访客 D",
+        })
+        assert chat_res.status_code == 200
+        session_id = json.loads(chat_res.data)["session"]["id"]
+
+        sessions_res = client.get(
+            f"/api/chat/{deployment_id}/sessions?include_messages=1",
+            headers=auth(token),
+        )
+        messages = json.loads(sessions_res.data)["sessions"][0]["messages"]
+        user_message = next(message for message in messages if message["role"] == "user")
+        assert "[masked-email]" in user_message["content"]
+        assert "[masked-phone]" in user_message["content"]
+
+        audit_res = client.get(f"/api/deployments/{deployment_id}/audit-logs", headers=auth(token))
+        audit_logs = json.loads(audit_res.data)["audit_logs"]
+        assert any(
+            log["action_type"] == "chat.turn" and log["details"]["access_mode"] == "public_token"
+            for log in audit_logs
+        )
+        assert session_id == json.loads(chat_res.data)["session"]["id"]
 
     def test_chat_low_confidence_creates_handoff(self, client, app_module, db):
         _, deployment_id, _, _ = create_agent_deployment(
@@ -644,6 +717,30 @@ class TestChat:
         assert handoff_res.status_code == 201
         handoff_data = json.loads(handoff_res.data)
         assert handoff_data["handoff_ticket"]["reason"] == "需要人工报价"
+
+    def test_forbidden_topic_triggers_guardrails(self, client, app_module, db):
+        token, deployment_id, _, _ = create_agent_deployment(
+            client,
+            app_module,
+            db,
+            publish=True,
+            knowledge_content="这里是基础 FAQ。",
+        )
+        client.put(f"/api/deployments/{deployment_id}/config", headers=auth(token), json={
+            "forbidden_topics": ["退款"],
+            "brand_voice": "concise",
+        })
+        detail_res = client.get(f"/api/deployments/{deployment_id}", headers=auth(token))
+        public_token = json.loads(detail_res.data)["deployment"]["public_token"]
+
+        chat_res = client.post(f"/api/public/chat/{public_token}/message", json={
+            "message": "我要退款",
+        })
+        assert chat_res.status_code == 200
+        chat_data = json.loads(chat_res.data)
+        assert "超出了当前机器人可直接处理的范围" in chat_data["assistant_message"]["content"]
+        assert chat_data["session"]["needs_handoff"] is True
+        assert chat_data["handoff_ticket"] is not None
 
 
 # ==================== Security / Infra ====================

@@ -6,9 +6,16 @@ from flask import Blueprint, jsonify, request
 
 from extensions import db
 from models import ConversationMessage, ConversationSession, Deployment
-from services.agents.support_responder import generate_support_response
-from services.deployment_service import user_can_manage_deployment
+from services.audit_service import record_audit
+from services.deployment_service import (
+    get_public_deployment,
+    load_deployment_config,
+    user_can_manage_deployment,
+)
+from services.guardrails_service import inspect_inbound_message, sanitize_outbound_message
 from services.handoff_service import create_handoff_ticket
+from services.prompt_service import render_support_prompt
+from services.provider_service import get_chat_provider
 from services.rag_service import search_deployment_knowledge
 from services.usage_meter_service import record_usage, summarize_deployment_usage
 from utils.auth import get_current_user
@@ -30,15 +37,12 @@ def _load_deployment_for_management(deployment_id):
     return user, deployment, None
 
 
-@bp.route("/api/chat/<int:deployment_id>/message", methods=["POST"])
-def send_chat_message(deployment_id):
-    deployment = Deployment.query.get(deployment_id)
+def _run_chat_turn(deployment, data, actor_user_id=None, access_mode="deployment_id"):
     if not deployment:
         return jsonify({"error": "部署实例不存在"}), 404
     if deployment.status != "active":
         return jsonify({"error": "机器人尚未发布上线"}), 400
 
-    data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
     if not message:
         return jsonify({"error": "消息不能为空"}), 400
@@ -62,30 +66,65 @@ def send_chat_message(deployment_id):
         db.session.add(session)
         db.session.flush()
 
+    deployment_config = load_deployment_config(deployment)
+    guardrails = inspect_inbound_message(message, deployment_config)
+    stored_user_message = guardrails["masked_message"]
+
     user_message = ConversationMessage(
         session_id=session.id,
         role="user",
-        content=message,
-        risk_level="low",
-        source_refs_json="[]",
+        content=stored_user_message,
+        risk_level=guardrails["risk_level"],
+        source_refs_json=json.dumps({
+            "pii_findings": guardrails["pii_findings"],
+            "forbidden_matches": guardrails["forbidden_matches"],
+            "sensitive_matches": guardrails["sensitive_matches"],
+        }, ensure_ascii=False),
     )
     db.session.add(user_message)
 
-    try:
-        deployment_config = json.loads(deployment.config_json or "{}")
-    except (json.JSONDecodeError, TypeError):
-        deployment_config = {}
+    snippets = []
+    if not guardrails["blocked"]:
+        snippets = search_deployment_knowledge(deployment, stored_user_message, limit=3)
 
-    snippets = search_deployment_knowledge(deployment, message, limit=3)
-    response = generate_support_response(message, snippets, deployment_config)
+    system_prompt = render_support_prompt(
+        deployment.template,
+        deployment,
+        deployment_config,
+        snippets,
+        deployment_config,
+    )
+    provider = get_chat_provider(deployment_config.get("provider"))
+    if guardrails["blocked"]:
+        response = {
+            "reply": guardrails["refusal_message"] or deployment_config["handoff_message"],
+            "confidence": 0.08,
+            "risk_level": guardrails["risk_level"],
+            "should_handoff": True,
+            "reason": guardrails["reason"] or "guardrails_blocked",
+            "sources": [],
+            "provider": "guardrails",
+            "system_prompt": system_prompt,
+        }
+    else:
+        response = provider.generate(system_prompt, stored_user_message, snippets, deployment_config)
+        if guardrails["should_handoff"]:
+            response["should_handoff"] = True
+            response["risk_level"] = "high"
+            response["reason"] = guardrails["reason"] or "guardrails_flagged"
 
+    assistant_reply = sanitize_outbound_message(response["reply"], deployment_config)
     assistant_message = ConversationMessage(
         session_id=session.id,
         role="assistant",
-        content=response["reply"],
+        content=assistant_reply,
         confidence=response["confidence"],
         risk_level=response["risk_level"],
-        source_refs_json=json.dumps(response["sources"], ensure_ascii=False),
+        source_refs_json=json.dumps({
+            "sources": response["sources"],
+            "provider": response.get("provider"),
+            "system_prompt": response.get("system_prompt"),
+        }, ensure_ascii=False),
     )
     db.session.add(assistant_message)
 
@@ -122,7 +161,7 @@ def send_chat_message(deployment_id):
             deployment,
             session,
             reason=response["reason"],
-            summary=message,
+            summary=stored_user_message,
             request_source="system",
         )
         if created:
@@ -133,12 +172,48 @@ def send_chat_message(deployment_id):
                 quantity=1,
             )
 
+    record_audit(
+        action_type="chat.turn",
+        resource_type="conversation_session",
+        resource_id=session.id,
+        actor_user_id=actor_user_id,
+        deployment_id=deployment.id,
+        summary=f"{deployment.deployment_name} 完成一轮会话",
+        details={
+            "access_mode": access_mode,
+            "session_id": session.id,
+            "provider": response.get("provider"),
+            "confidence": response["confidence"],
+            "risk_level": response["risk_level"],
+            "should_handoff": response["should_handoff"],
+            "pii_findings": guardrails["pii_findings"],
+            "forbidden_matches": guardrails["forbidden_matches"],
+            "sensitive_matches": guardrails["sensitive_matches"],
+        },
+    )
     db.session.commit()
     return jsonify({
         "session": session.to_dict(),
         "assistant_message": assistant_message.to_dict(),
         "handoff_ticket": handoff_ticket.to_dict() if handoff_ticket else None,
     }), 200
+
+
+@bp.route("/api/chat/<int:deployment_id>/message", methods=["POST"])
+def send_chat_message(deployment_id):
+    deployment = Deployment.query.get(deployment_id)
+    data = request.get_json(silent=True) or {}
+    return _run_chat_turn(deployment, data, access_mode="deployment_id")
+
+
+@bp.route("/api/public/chat/<string:public_token>/message", methods=["POST"])
+def send_public_chat_message(public_token):
+    deployment = get_public_deployment(public_token)
+    if not deployment:
+        return jsonify({"error": "公开聊天入口不存在"}), 404
+
+    data = request.get_json(silent=True) or {}
+    return _run_chat_turn(deployment, data, access_mode="public_token")
 
 
 @bp.route("/api/chat/<int:deployment_id>/sessions", methods=["GET"])
@@ -214,6 +289,19 @@ def request_handoff(deployment_id):
             metric_type="handoff",
             quantity=1,
         )
+    record_audit(
+        action_type="handoff.requested",
+        resource_type="handoff_ticket",
+        resource_id=ticket.ticket_no,
+        actor_user_id=current_user.id if current_user else None,
+        deployment_id=deployment.id,
+        summary=f"提交转人工请求 {ticket.ticket_no}",
+        details={
+            "session_id": session.id,
+            "reason": reason,
+            "request_source": request_source,
+        },
+    )
 
     db.session.commit()
     return jsonify({

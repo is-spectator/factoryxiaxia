@@ -299,6 +299,7 @@ class Deployment(db.Model):
     status = db.Column(db.String(30), default="pending_setup")
     deployment_name = db.Column(db.String(120), nullable=False)
     channel_type = db.Column(db.String(30), default="web_widget")
+    public_token = db.Column(db.String(120), unique=True, nullable=True)
     config_json = db.Column(db.Text, default="{}")
     started_at = db.Column(db.DateTime, nullable=True)
     suspended_at = db.Column(db.DateTime, nullable=True)
@@ -332,6 +333,7 @@ class Deployment(db.Model):
             "status": self.status,
             "deployment_name": self.deployment_name,
             "channel_type": self.channel_type,
+            "public_token": self.public_token,
             "config": config,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "suspended_at": self.suspended_at.isoformat() if self.suspended_at else None,
@@ -523,6 +525,42 @@ class UsageRecord(db.Model):
             "quantity": float(self.quantity) if self.quantity is not None else 0.0,
             "unit": self.unit,
             "meta": meta,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class AuditLog(db.Model):
+    __tablename__ = "audit_logs"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    deployment_id = db.Column(db.Integer, db.ForeignKey("deployments.id"), nullable=True)
+    action_type = db.Column(db.String(60), nullable=False)
+    resource_type = db.Column(db.String(60), nullable=False)
+    resource_id = db.Column(db.String(80), nullable=False)
+    summary = db.Column(db.String(255), default="")
+    details_json = db.Column(db.Text, default="{}")
+    ip_address = db.Column(db.String(64), default="")
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+    actor = db.relationship("User", backref="audit_logs", lazy=True)
+    deployment = db.relationship("Deployment", backref="audit_logs", lazy=True)
+
+    def to_dict(self):
+        try:
+            details = json.loads(self.details_json or "{}")
+        except (json.JSONDecodeError, TypeError):
+            details = {}
+        return {
+            "id": self.id,
+            "actor_user_id": self.actor_user_id,
+            "actor_username": self.actor.username if self.actor else None,
+            "deployment_id": self.deployment_id,
+            "action_type": self.action_type,
+            "resource_type": self.resource_type,
+            "resource_id": self.resource_id,
+            "summary": self.summary,
+            "details": details,
+            "ip_address": self.ip_address,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

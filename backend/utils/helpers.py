@@ -6,6 +6,7 @@ import logging
 import datetime
 import traceback
 import random
+import secrets
 
 
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
@@ -64,3 +65,7 @@ def generate_payment_no():
 def generate_ticket_no():
     now = datetime.datetime.utcnow()
     return now.strftime("HT%Y%m%d%H%M%S") + str(random.randint(1000, 9999))
+
+
+def generate_public_token(length=18):
+    return secrets.token_urlsafe(length)

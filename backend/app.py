@@ -31,6 +31,7 @@ from routes.admin import bp as admin_bp
 from routes.system import bp as system_bp
 from models import (
     AgentTemplate,
+    AuditLog,
     Category,
     ConversationMessage,
     ConversationSession,
@@ -49,6 +50,7 @@ from models import (
     UsageRecord,
     Worker,
 )
+from services.deployment_service import ensure_public_token
 
 logger = setup_logging()
 
@@ -122,6 +124,7 @@ def ensure_foundation_schema():
     ensure_column("workers", "template_key", "VARCHAR(80) NULL")
     ensure_column("orders", "order_type", "VARCHAR(30) DEFAULT 'rental'")
     ensure_column("orders", "service_plan_id", "INTEGER NULL")
+    ensure_column("deployments", "public_token", "VARCHAR(120) NULL")
 
 
 def ensure_order_schema():
@@ -218,6 +221,11 @@ def bootstrap_agent_foundation():
 
         if changed:
             logger.info("Bootstrapped support responder worker foundation")
+
+    for deployment in Deployment.query.filter(
+        db.or_(Deployment.public_token.is_(None), Deployment.public_token == "")
+    ).all():
+        ensure_public_token(deployment)
 
 
 app.register_blueprint(auth_bp)

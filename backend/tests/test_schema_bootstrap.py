@@ -21,6 +21,15 @@ def test_bootstrap_workers_schema_includes_agent_fields():
     assert "template_key VARCHAR(80) DEFAULT NULL" in workers_section
 
 
+def test_bootstrap_deployments_schema_includes_public_token():
+    sql = Path(__file__).resolve().parents[1] / "init.sql"
+    content = sql.read_text(encoding="utf-8")
+
+    deployments_section = content.split("CREATE TABLE IF NOT EXISTS deployments (", 1)[1].split(") ENGINE=InnoDB", 1)[0]
+
+    assert "public_token VARCHAR(120) DEFAULT NULL UNIQUE" in deployments_section
+
+
 def test_bootstrap_contains_agent_tables():
     sql = Path(__file__).resolve().parents[1] / "init.sql"
     content = sql.read_text(encoding="utf-8")
@@ -35,3 +44,4 @@ def test_bootstrap_contains_agent_tables():
     assert "CREATE TABLE IF NOT EXISTS conversation_messages (" in content
     assert "CREATE TABLE IF NOT EXISTS handoff_tickets (" in content
     assert "CREATE TABLE IF NOT EXISTS usage_records (" in content
+    assert "CREATE TABLE IF NOT EXISTS audit_logs (" in content

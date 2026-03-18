@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     status VARCHAR(30) DEFAULT 'pending_setup',
     deployment_name VARCHAR(120) NOT NULL,
     channel_type VARCHAR(30) DEFAULT 'web_widget',
+    public_token VARCHAR(120) DEFAULT NULL UNIQUE,
     config_json TEXT DEFAULT NULL,
     started_at DATETIME DEFAULT NULL,
     suspended_at DATETIME DEFAULT NULL,
@@ -221,6 +222,21 @@ CREATE TABLE IF NOT EXISTS usage_records (
     FOREIGN KEY (session_id) REFERENCES conversation_sessions(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    actor_user_id INT DEFAULT NULL,
+    deployment_id INT DEFAULT NULL,
+    action_type VARCHAR(60) NOT NULL,
+    resource_type VARCHAR(60) NOT NULL,
+    resource_id VARCHAR(80) NOT NULL,
+    summary VARCHAR(255) DEFAULT '',
+    details_json TEXT DEFAULT NULL,
+    ip_address VARCHAR(64) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (actor_user_id) REFERENCES users(id),
+    FOREIGN KEY (deployment_id) REFERENCES deployments(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 支付记录表
 CREATE TABLE IF NOT EXISTS payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -295,6 +311,7 @@ CREATE INDEX idx_workers_worker_type ON workers(worker_type);
 CREATE INDEX idx_service_plans_worker_id ON service_plans(worker_id);
 CREATE INDEX idx_deployments_user_id ON deployments(user_id);
 CREATE INDEX idx_deployments_status ON deployments(status);
+CREATE INDEX idx_deployments_public_token ON deployments(public_token);
 CREATE INDEX idx_knowledge_bases_deployment_id ON knowledge_bases(deployment_id);
 CREATE INDEX idx_knowledge_documents_knowledge_base_id ON knowledge_documents(knowledge_base_id);
 CREATE INDEX idx_knowledge_documents_status ON knowledge_documents(status);
@@ -305,6 +322,8 @@ CREATE INDEX idx_handoff_tickets_deployment_id ON handoff_tickets(deployment_id)
 CREATE INDEX idx_handoff_tickets_status ON handoff_tickets(status);
 CREATE INDEX idx_usage_records_deployment_id ON usage_records(deployment_id);
 CREATE INDEX idx_usage_records_metric_type ON usage_records(metric_type);
+CREATE INDEX idx_audit_logs_deployment_id ON audit_logs(deployment_id);
+CREATE INDEX idx_audit_logs_action_type ON audit_logs(action_type);
 
 INSERT INTO agent_templates (`key`, name, source_repo, source_path, prompt_template, default_tools, risk_level, is_active)
 VALUES (
