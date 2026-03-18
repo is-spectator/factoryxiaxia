@@ -5,6 +5,8 @@ import logging
 import json
 import traceback
 
+from sqlalchemy import inspect, text
+
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -229,6 +231,27 @@ ORDER_TRANSITIONS = {
     "cancelled": [],
     "refunded": [],
 }
+
+
+def ensure_order_schema():
+    inspector = inspect(db.engine)
+    if not inspector.has_table("orders"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("orders")}
+    if "activated_at" in column_names:
+        return
+
+    dialect_name = db.engine.dialect.name
+    if dialect_name == "mysql":
+        alter_sql = "ALTER TABLE orders ADD COLUMN activated_at DATETIME NULL AFTER paid_at"
+    else:
+        alter_sql = "ALTER TABLE orders ADD COLUMN activated_at DATETIME"
+
+    with db.engine.begin() as connection:
+        connection.execute(text(alter_sql))
+
+    logger.info("Added missing orders.activated_at column")
 
 
 class Order(db.Model):
@@ -1536,6 +1559,7 @@ def api_docs():
 
 with app.app_context():
     db.create_all()
+    ensure_order_schema()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
