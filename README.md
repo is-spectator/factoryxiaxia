@@ -42,7 +42,7 @@
 
 启动后：
 
-- 前端：http://localhost
+- 前端：http://localhost:10088
 - 后端 API：http://localhost:5000
 - 数据库：localhost:3306
 
@@ -58,7 +58,7 @@
 ### 注册
 
 ```bash
-curl -X POST http://localhost/api/register \
+curl -X POST http://localhost:10088/api/register \
   -H "Content-Type: application/json" \
   -d '{"username":"test","email":"test@example.com","password":"12345678","confirm_password":"12345678"}'
 ```
@@ -66,7 +66,7 @@ curl -X POST http://localhost/api/register \
 ### 登录
 
 ```bash
-curl -X POST http://localhost/api/login \
+curl -X POST http://localhost:10088/api/login \
   -H "Content-Type: application/json" \
   -d '{"login_id":"test","password":"12345678"}'
 ```
@@ -74,7 +74,7 @@ curl -X POST http://localhost/api/login \
 ### 查看个人信息
 
 ```bash
-curl http://localhost/api/profile \
+curl http://localhost:10088/api/profile \
   -H "Authorization: Bearer <token>"
 ```
 
