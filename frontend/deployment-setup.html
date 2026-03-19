@@ -121,11 +121,17 @@ function getDeploymentConfig() {
 
 function buildApiExample(origin, deployment) {
     const endpoint = `${origin}/api/public/chat/${deployment.public_token}/message`;
-    const payload = '{\n  "message": "你好，我想咨询退款政策",\n  "visitor_name": "官网访客"\n}';
+    const payloadObject = {
+        message: '你好，我想咨询退款政策',
+        visitor_name: '官网访客',
+    };
+    const payload = JSON.stringify(payloadObject, null, 2);
+    const payloadOneLine = JSON.stringify(payloadObject);
     return {
         endpoint,
-        curl: `curl -X POST '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -d '${payload.replace(/\n/g, "\\n").replace(/'/g, "\\'")}'`,
+        curl: `curl -X POST '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -d '${payloadOneLine.replace(/'/g, "'\\''")}'`,
         fetch: `fetch('${endpoint}', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    message: '你好，我想咨询退款政策',\n    visitor_name: '官网访客'\n  })\n}).then(res => res.json()).then(console.log);`,
+        payload,
     };
 }
 
