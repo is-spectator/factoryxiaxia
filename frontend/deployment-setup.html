@@ -60,6 +60,7 @@ const state = {
     order: null,
     organizations: [],
     deployment: null,
+    runtimeConfig: null,
 };
 
 function authHeaders(extra) {
@@ -88,9 +89,17 @@ function canEnterWizard(order) {
     return !!order && ['paid', 'active', 'completed'].includes(order.status);
 }
 
+function isKongKongOrder(order) {
+    return !!order && order.worker_runtime_kind === 'openclaw_managed';
+}
+
+function isKongKongDeployment(deployment) {
+    return !!deployment && (deployment.runtime_kind === 'openclaw_managed' || !!deployment.kongkong_instance);
+}
+
 function serializeList(value) {
     return String(value || '')
-        .split(',')
+        .split(/[\n,]/)
         .map(item => item.trim())
         .filter(Boolean);
 }
@@ -106,8 +115,38 @@ function formatDate(iso) {
     });
 }
 
+function normalizeProviderName(value) {
+    const provider = String(value || '').trim().toLowerCase();
+    return ['dashscope', 'qwen', 'qwen-max'].includes(provider) ? 'dashscope' : 'rules';
+}
+
+function getProviderDefaults(providerName) {
+    const runtimeProvider = (state.runtimeConfig && state.runtimeConfig.provider) || {};
+    const runtimeDefaults = runtimeProvider.provider_defaults || {};
+    const normalized = normalizeProviderName(providerName || runtimeProvider.default_provider || 'rules');
+    const defaults = {
+        provider: normalized,
+        provider_model: '',
+        provider_temperature: 0.2,
+        provider_top_p: 0.8,
+        provider_max_tokens: 800,
+        provider_timeout_seconds: 30,
+        provider_retry_attempts: 1,
+    };
+    if (normalized === 'dashscope') {
+        defaults.provider_model = runtimeProvider.default_model || 'qwen-max';
+        if (normalizeProviderName(runtimeDefaults.provider) === 'dashscope') {
+            Object.assign(defaults, runtimeDefaults, { provider: 'dashscope' });
+        }
+        defaults.provider = 'dashscope';
+        defaults.provider_model = defaults.provider_model || runtimeProvider.default_model || 'qwen-max';
+    }
+    return defaults;
+}
+
 function getDeploymentConfig() {
-    return (state.deployment && state.deployment.config) || {
+    const providerDefaults = getProviderDefaults();
+    const defaultConfig = {
         brand_voice: 'professional',
         business_name: '',
         handoff_message: '这个问题我需要转给人工客服继续确认，请稍等。',
@@ -115,8 +154,48 @@ function getDeploymentConfig() {
         handoff_on_pii: false,
         forbidden_topics: [],
         sensitive_keywords: [],
-        provider: 'rules',
+        provider: providerDefaults.provider || 'rules',
+        provider_model: providerDefaults.provider_model || '',
+        provider_temperature: providerDefaults.provider_temperature ?? 0.2,
+        provider_top_p: providerDefaults.provider_top_p ?? 0.8,
+        provider_max_tokens: providerDefaults.provider_max_tokens ?? 800,
+        provider_timeout_seconds: providerDefaults.provider_timeout_seconds ?? 30,
+        provider_retry_attempts: providerDefaults.provider_retry_attempts ?? 1,
+        allowed_origins: [],
+        public_access_enabled: true,
     };
+    const existingConfig = (state.deployment && state.deployment.config) || {};
+    const existingProviderDefaults = getProviderDefaults(existingConfig.provider || defaultConfig.provider);
+    return Object.assign({}, defaultConfig, existingProviderDefaults, existingConfig, {
+        provider: normalizeProviderName(existingConfig.provider || defaultConfig.provider),
+        provider_model: existingConfig.provider_model || existingProviderDefaults.provider_model || defaultConfig.provider_model,
+    });
+}
+
+function readNumberInput(id, fallback) {
+    const element = document.getElementById(id);
+    const value = element ? element.value : '';
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function handleProviderChange() {
+    const providerSelect = document.getElementById('provider');
+    if (!providerSelect) return;
+    const defaults = getProviderDefaults(providerSelect.value);
+    const modelInput = document.getElementById('provider-model');
+    const temperatureInput = document.getElementById('provider-temperature');
+    const topPInput = document.getElementById('provider-top-p');
+    const maxTokensInput = document.getElementById('provider-max-tokens');
+    const timeoutInput = document.getElementById('provider-timeout-seconds');
+    const retryInput = document.getElementById('provider-retry-attempts');
+
+    if (modelInput) modelInput.value = defaults.provider_model || '';
+    if (temperatureInput) temperatureInput.value = defaults.provider_temperature;
+    if (topPInput) topPInput.value = defaults.provider_top_p;
+    if (maxTokensInput) maxTokensInput.value = defaults.provider_max_tokens;
+    if (timeoutInput) timeoutInput.value = defaults.provider_timeout_seconds;
+    if (retryInput) retryInput.value = defaults.provider_retry_attempts;
 }
 
 function buildApiExample(origin, deployment) {
@@ -163,6 +242,12 @@ async function loadOrganizations() {
     return state.organizations;
 }
 
+async function loadRuntimeConfig() {
+    const data = await fetchJson('/api/runtime-config');
+    state.runtimeConfig = data;
+    return data;
+}
+
 async function loadDeploymentDetail(deploymentId) {
     const data = await fetchJson(`/api/deployments/${deploymentId}`, { headers: authHeaders() });
     state.deployment = data.deployment;
@@ -182,14 +267,65 @@ async function loadExistingDeploymentByOrder(order) {
 
 function getStepState(stepIndex) {
     const deployment = state.deployment;
+    const kongkongMode = isKongKongDeployment(deployment) || isKongKongOrder(state.order);
     const hasDeployment = !!deployment;
     const hasKnowledge = hasDeployment && (deployment.knowledge_bases || []).some(kb => (kb.document_count || 0) > 0);
     const isPublished = hasDeployment && deployment.status === 'active';
+    const runtimeReady = hasDeployment && deployment.kongkong_instance && deployment.kongkong_instance.status === 'running';
+    const launchReady = runtimeReady && deployment.kongkong_instance.entry_url;
+    if (kongkongMode) {
+        if (stepIndex === 1) return hasDeployment ? 'done' : 'current';
+        if (stepIndex === 2) return hasDeployment ? 'done' : 'idle';
+        if (stepIndex === 3) return runtimeReady ? 'done' : (hasDeployment ? 'current' : 'idle');
+        if (stepIndex === 4) return launchReady ? 'done' : (runtimeReady ? 'current' : 'idle');
+        return 'idle';
+    }
     if (stepIndex === 1) return hasDeployment ? 'done' : 'current';
     if (stepIndex === 2) return hasDeployment ? 'current' : 'idle';
     if (stepIndex === 3) return hasKnowledge ? 'done' : (hasDeployment ? 'current' : 'idle');
     if (stepIndex === 4) return isPublished ? 'done' : (hasKnowledge ? 'current' : 'idle');
     return 'idle';
+}
+
+function renderKongKongRuntimeCard(deployment) {
+    const instance = deployment && deployment.kongkong_instance;
+    if (!instance) {
+        return `
+            <div class="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-gray-500 leading-7">
+                创建部署实例后，系统会自动为你创建空空专属 OpenClaw 工作台。
+            </div>
+        `;
+    }
+    return `
+        <div class="rounded-2xl border border-white/10 bg-white/5 p-5 mb-5">
+            <div class="grid md:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">实例状态</p>
+                    <p class="font-bold">${esc(instance.status)}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">入口链接</p>
+                    <p class="font-mono text-xs break-all">${instance.entry_url ? esc(instance.entry_url) : '待生成'}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">默认模型</p>
+                    <p class="font-bold">${esc(instance.model_name || 'qwen-max')}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">实例规格</p>
+                    <p class="font-bold">${instance.cpu_limit || 1} CPU / ${instance.memory_limit_mb || 2048}MB</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">实例标识</p>
+                    <p class="font-mono text-xs">${esc(instance.instance_slug)}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 mb-1">到期时间</p>
+                    <p class="font-bold">${formatDate(instance.expires_at)}</p>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function renderStep(label, description, stepIndex) {
@@ -231,11 +367,56 @@ function renderKnowledgeBases() {
                 <div class="text-right text-xs text-gray-400">
                     <p>文档数: ${kb.document_count}</p>
                     <p>已发布: ${kb.published_document_count}</p>
+                    <p>字符数: ${kb.total_char_count || 0}</p>
                 </div>
             </div>
             <p class="text-xs text-gray-500">状态: ${esc(kb.status)}${kb.published_at ? ` · 发布时间 ${formatDate(kb.published_at)}` : ''}</p>
+            ${(kb.sample_titles || []).length ? `<p class="text-xs text-gray-400 mt-3 leading-6">示例文档: ${esc(kb.sample_titles.join('、'))}</p>` : ''}
         </div>
     `).join('');
+}
+
+function renderKnowledgeSummary(deployment) {
+    const summary = deployment && deployment.knowledge_summary;
+    if (!summary || !summary.bases || !summary.bases.length) {
+        return `
+            <div class="rounded-2xl border border-dashed border-white/10 p-4 text-xs text-gray-500 leading-6">
+                发布后这里会显示当前线上知识版本、最后发布时间和生效中的知识摘要。
+            </div>
+        `;
+    }
+
+    return `
+        <div class="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
+            <div class="grid grid-cols-2 gap-3 text-xs text-gray-300">
+                <div>
+                    <p class="text-gray-500 mb-1">线上知识版本</p>
+                    <p class="font-mono text-cyan-200">${esc(deployment.knowledge_version || '--')}</p>
+                </div>
+                <div>
+                    <p class="text-gray-500 mb-1">最后发布时间</p>
+                    <p>${formatDate(deployment.knowledge_last_published_at || summary.last_published_at)}</p>
+                </div>
+                <div>
+                    <p class="text-gray-500 mb-1">生效知识库</p>
+                    <p>${summary.knowledge_base_count || 0} 个</p>
+                </div>
+                <div>
+                    <p class="text-gray-500 mb-1">生效文档</p>
+                    <p>${summary.published_document_count || 0} 篇</p>
+                </div>
+            </div>
+            <div class="space-y-3">
+                ${(summary.bases || []).map(base => `
+                    <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <p class="text-sm font-bold">${esc(base.name)}</p>
+                        <p class="text-xs text-gray-500 mt-1">${base.document_count || 0} 篇文档 · ${base.total_char_count || 0} 字符</p>
+                        ${(base.sample_titles || []).length ? `<p class="text-xs text-gray-400 mt-2 leading-6">示例: ${esc(base.sample_titles.join('、'))}</p>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
 }
 
 function renderWizard() {
@@ -271,9 +452,11 @@ function renderWizard() {
     }
 
     const deployment = state.deployment;
+    const kongkongMode = isKongKongDeployment(deployment) || isKongKongOrder(order);
     const config = getDeploymentConfig();
     const durationDays = Math.max(1, Math.round((order.duration_hours || 720) / 24));
     const apiReady = deployment && deployment.status === 'active' && deployment.public_token;
+    const publicAccessEnabled = !!config.public_access_enabled;
     const apiExample = apiReady ? buildApiExample(window.location.origin, deployment) : null;
 
     document.getElementById('wizard-content').innerHTML = `
@@ -283,7 +466,9 @@ function renderWizard() {
                     <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工交付
                 </p>
                 <h1 class="text-4xl font-bold mb-3">部署向导</h1>
-                <p class="text-gray-400 max-w-3xl">把 ${esc(order.worker_name)} 从已支付订单变成可对外提供服务的机器人实例。你会在这里完成部署创建、知识库配置、发布和 API 交付。</p>
+                <p class="text-gray-400 max-w-3xl">${kongkongMode
+                    ? `把 ${esc(order.worker_name)} 从已支付订单交付成可访问的 OpenClaw 工作台实例。你会在这里完成实例创建、运行配置和入口交付。`
+                    : `把 ${esc(order.worker_name)} 从已支付订单变成可对外提供服务的机器人实例。你会在这里完成部署创建、知识库配置、发布和 API 交付。`}</p>
             </div>
             <div class="flex gap-3">
                 <a href="order-detail.html?order_id=${order.id}" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl text-sm font-bold transition">查看订单</a>
@@ -314,9 +499,9 @@ function renderWizard() {
 
         <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
             ${renderStep('创建实例', '选择组织、实例名和渠道，生成部署实例。', 1)}
-            ${renderStep('配置规则', '设置品牌语气、禁答和隐私处理策略。', 2)}
-            ${renderStep('上传知识', '补充 FAQ、流程说明或品牌资料。', 3)}
-            ${renderStep('发布交付', '发布上线并拿到公开 API token。', 4)}
+            ${renderStep(kongkongMode ? '配置运行时' : '配置规则', kongkongMode ? '设置实例名称、模型和运行参数。' : '设置品牌语气、禁答和隐私处理策略。', 2)}
+            ${renderStep(kongkongMode ? '启动实例' : '上传知识', kongkongMode ? '系统会自动拉起空空专属 OpenClaw 工作台。' : '补充 FAQ、流程说明或品牌资料。', 3)}
+            ${renderStep(kongkongMode ? '交付入口' : '发布交付', kongkongMode ? '实例运行后在这里获取工作台入口链接。' : '发布上线并拿到公开 API token。', 4)}
         </div>
 
         <div class="grid lg:grid-cols-5 gap-6">
@@ -362,7 +547,7 @@ function renderWizard() {
                     <div class="flex items-center justify-between gap-4 mb-5">
                         <div>
                             <h2 class="text-lg font-bold">2. 配置机器人规则</h2>
-                            <p class="text-sm text-gray-400 mt-1">部署创建后即可保存配置，后续可以重复修改。</p>
+                            <p class="text-sm text-gray-400 mt-1">${kongkongMode ? '空空默认接入 qwen-max，你可以在这里维护实例名称、模型和运行参数。' : '部署创建后即可保存配置，后续可以重复修改。'}</p>
                         </div>
                         <span class="text-xs px-3 py-1 rounded-full ${deployment ? 'bg-cyan-400/10 border border-cyan-400/20 text-cyan-300' : 'border border-white/10 text-gray-500'}">${deployment ? '可保存' : '先创建实例'}</span>
                     </div>
@@ -404,9 +589,72 @@ function renderWizard() {
                             命中隐私信息时自动转人工
                         </label>
                     </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/5 p-4 mb-5">
+                        <div class="flex items-center justify-between gap-3 mb-4">
+                            <div>
+                                <p class="font-bold text-sm">LLM Provider</p>
+                                <p class="text-xs text-gray-500 mt-1">当前支持 rules 和 DashScope qwen-max。生产推荐使用 DashScope。</p>
+                            </div>
+                            ${state.runtimeConfig && state.runtimeConfig.provider && state.runtimeConfig.provider.dashscope_enabled ? '<span class="text-[11px] px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">DashScope 已配置</span>' : '<span class="text-[11px] px-3 py-1 rounded-full border border-white/10 text-gray-500">未检测到 DashScope 密钥</span>'}
+                        </div>
+                        <div class="grid md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="text-xs text-gray-500 mb-2 block">Provider</label>
+                                <select id="provider" onchange="handleProviderChange()" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400">
+                                    <option value="rules" ${config.provider === 'rules' ? 'selected' : ''}>rules（本地规则兜底）</option>
+                                    <option value="dashscope" ${config.provider === 'dashscope' ? 'selected' : ''}>dashscope（Qwen）</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 mb-2 block">模型</label>
+                                <input id="provider-model" type="text" value="${esc(config.provider_model || '')}" placeholder="例如：qwen-max" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                            </div>
+                        </div>
+                        <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+                            <div>
+                                <label class="text-xs text-gray-500 mb-2 block">Temperature</label>
+                                <input id="provider-temperature" type="number" min="0" max="2" step="0.1" value="${esc(config.provider_temperature)}" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 mb-2 block">Top P</label>
+                                <input id="provider-top-p" type="number" min="0" max="1" step="0.1" value="${esc(config.provider_top_p)}" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 mb-2 block">Max Tokens</label>
+                                <input id="provider-max-tokens" type="number" min="64" step="64" value="${esc(config.provider_max_tokens)}" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 mb-2 block">Timeout / Retry</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input id="provider-timeout-seconds" type="number" min="5" step="1" value="${esc(config.provider_timeout_seconds)}" class="w-full bg-white/5 border border-white/15 rounded-2xl px-3 py-3 focus:outline-none focus:border-cyan-400"/>
+                                    <input id="provider-retry-attempts" type="number" min="0" step="1" value="${esc(config.provider_retry_attempts)}" class="w-full bg-white/5 border border-white/15 rounded-2xl px-3 py-3 focus:outline-none focus:border-cyan-400"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-5">
+                        <label class="text-xs text-gray-500 mb-2 block">允许访问的浏览器域名（逗号或换行分隔）</label>
+                        <textarea id="allowed-origins" rows="4" placeholder="例如：https://www.example.com&#10;https://help.example.com" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400 resize-none">${esc((config.allowed_origins || []).join('\n'))}</textarea>
+                        <p class="text-xs text-gray-500 mt-2 leading-6">浏览器挂件请求必须来自这里填写的域名；服务端直接调用公开 API 时不受这个白名单限制。</p>
+                    </div>
                     <button onclick="saveConfig()" id="save-config-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">保存配置</button>
                 </section>
 
+                ${kongkongMode ? `
+                <section class="card p-6">
+                    <div class="flex items-center justify-between gap-4 mb-5">
+                        <div>
+                            <h2 class="text-lg font-bold">3. 启动空空实例</h2>
+                            <p class="text-sm text-gray-400 mt-1">空空会在创建部署后自动实例化专属 OpenClaw 工作台。</p>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-gray-300 leading-7">
+                        <p>1. 支付完成后，系统会为当前订单创建独立实例。</p>
+                        <p>2. 实例会注入默认模型配置：DashScope / qwen-max。</p>
+                        <p>3. 运行成功后，你会在右侧看到入口链接和工作台按钮。</p>
+                    </div>
+                </section>
+                ` : `
                 <section class="card p-6">
                     <div class="flex items-center justify-between gap-4 mb-5">
                         <div>
@@ -446,6 +694,7 @@ function renderWizard() {
                     <div class="mb-5">
                         <label class="text-xs text-gray-500 mb-2 block">文档内容</label>
                         <textarea id="doc-content" rows="8" placeholder="粘贴你的 FAQ、流程说明、品牌规范等内容..." class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400 resize-none"></textarea>
+                        <p class="text-xs text-gray-500 mt-2 leading-6">上传时会校验：标题不能重复、内容不能为空、内容不能过短，也不能超长。</p>
                     </div>
                     <div class="flex flex-wrap gap-3 mb-6">
                         <button onclick="uploadKnowledge()" id="upload-knowledge-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">上传知识文档</button>
@@ -455,18 +704,20 @@ function renderWizard() {
                         ${renderKnowledgeBases()}
                     </div>
                 </section>
+                `}
             </div>
 
             <div class="lg:col-span-2 space-y-6">
                 <section class="card p-6 sticky top-28">
                     <div class="flex items-center justify-between gap-4 mb-5">
                         <div>
-                            <h2 class="text-lg font-bold">4. 发布与 API 交付</h2>
-                            <p class="text-sm text-gray-400 mt-1">发布后公开 token 和调用示例会在这里显示。</p>
+                            <h2 class="text-lg font-bold">${kongkongMode ? '4. 工作台入口交付' : '4. 发布与 API 交付'}</h2>
+                            <p class="text-sm text-gray-400 mt-1">${kongkongMode ? '运行成功后，这里会显示空空工作台入口和实例状态。' : '发布后公开 token 和调用示例会在这里显示。'}</p>
                         </div>
-                        ${deployment && deployment.status === 'active' ? '<span class="text-xs px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">已发布</span>' : ''}
+                        ${deployment && deployment.status === 'active' ? `<span class="text-xs px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">${kongkongMode ? '实例运行中' : '已发布'}</span>` : ''}
                     </div>
 
+                    ${kongkongMode ? renderKongKongRuntimeCard(deployment) : `
                     <div class="rounded-2xl border border-white/10 bg-white/5 p-5 mb-5">
                         <div class="grid md:grid-cols-2 gap-4 text-sm">
                             <div>
@@ -482,19 +733,58 @@ function renderWizard() {
                                 <p class="font-mono text-xs break-all">${apiReady ? esc(deployment.public_token) : '发布成功后生成'}</p>
                             </div>
                             <div>
+                                <p class="text-xs text-gray-500 mb-1">公开访问状态</p>
+                                <p class="font-bold ${publicAccessEnabled ? 'text-green-300' : 'text-orange-300'}">${publicAccessEnabled ? '已启用' : '已停用'}</p>
+                            </div>
+                            <div>
                                 <p class="text-xs text-gray-500 mb-1">到期时间</p>
                                 <p class="font-bold">${deployment ? formatDate(deployment.expires_at) : '--'}</p>
                             </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">LLM Provider</p>
+                                <p class="font-bold">${esc(config.provider || 'rules')}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">生成模型</p>
+                                <p class="font-bold">${esc(config.provider_model || 'rules')}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-1">浏览器白名单域名</p>
+                                <p class="text-xs leading-6 text-gray-300">${(config.allowed_origins || []).length ? esc(config.allowed_origins.join('、')) : '尚未配置，浏览器挂件无法直接访问'}</p>
+                            </div>
                         </div>
                     </div>
+                    `}
+
+                    ${kongkongMode ? '' : `
+                    <div class="mb-5">
+                        <div class="flex items-center justify-between gap-3 mb-3">
+                            <p class="text-sm font-bold">当前线上知识摘要</p>
+                            ${deployment && deployment.knowledge_version ? `<span class="text-[11px] px-3 py-1 rounded-full border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">${esc(deployment.knowledge_version)}</span>` : ''}
+                        </div>
+                        ${renderKnowledgeSummary(deployment)}
+                    </div>
+                    `}
 
                     <div class="flex flex-wrap gap-3 mb-6">
-                        <button onclick="publishDeployment()" id="publish-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">发布机器人</button>
+                        ${kongkongMode
+                            ? `<button onclick="openKongKongWorkspace()" id="publish-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${(deployment && deployment.kongkong_instance && deployment.kongkong_instance.status === 'running') ? '' : 'opacity-50 pointer-events-none'}">进入空空工作台</button>`
+                            : `<button onclick="publishDeployment()" id="publish-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">发布机器人</button>`}
                         ${deployment ? `<button onclick="refreshDeployment()" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition">刷新状态</button>` : ''}
+                        ${kongkongMode && deployment && deployment.kongkong_instance ? `<button onclick="runKongKongAction('${deployment.kongkong_instance.status === 'running' ? 'suspend' : 'start'}')" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition">${deployment.kongkong_instance.status === 'running' ? '暂停实例' : '启动实例'}</button>` : ''}
                     </div>
 
-                    ${apiExample ? `
+                    ${kongkongMode ? `
+                        <div class="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-gray-400 leading-7">
+                            工作台入口会在实例运行后提供。首次进入 OpenClaw 如果要求输入 Gateway Token，系统会在打开入口时弹出提示。
+                        </div>
+                    ` : (apiExample ? `
                         <div class="space-y-5">
+                            ${publicAccessEnabled ? '' : `
+                                <div class="rounded-2xl border border-orange-400/20 bg-orange-400/5 px-4 py-4 text-sm text-orange-200">
+                                    当前公开 Token 已停用。重新启用后，下面的 endpoint 和示例才会恢复可用。
+                                </div>
+                            `}
                             <div>
                                 <div class="flex items-center justify-between gap-3 mb-2">
                                     <p class="text-sm font-bold">公开 API Endpoint</p>
@@ -521,7 +811,7 @@ function renderWizard() {
                         <div class="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-gray-500 leading-7">
                             还没有公开 API。请先创建实例、上传至少一篇知识文档并成功发布，系统才会生成可调用的公开 Token 和 API 地址。
                         </div>
-                    `}
+                    `)}
                 </section>
             </div>
         </div>
@@ -544,6 +834,8 @@ async function ensureOrganizationSelection() {
 }
 
 function collectConfigPayload() {
+    const provider = normalizeProviderName(document.getElementById('provider').value);
+    const providerDefaults = getProviderDefaults(provider);
     return {
         business_name: document.getElementById('business-name').value.trim(),
         brand_voice: document.getElementById('brand-voice').value,
@@ -552,7 +844,16 @@ function collectConfigPayload() {
         sensitive_keywords: serializeList(document.getElementById('sensitive-keywords').value),
         pii_masking_enabled: document.getElementById('pii-masking-enabled').checked,
         handoff_on_pii: document.getElementById('handoff-on-pii').checked,
-        provider: 'rules',
+        provider,
+        provider_model: provider === 'dashscope'
+            ? (document.getElementById('provider-model').value.trim() || providerDefaults.provider_model || 'qwen-max')
+            : '',
+        provider_temperature: readNumberInput('provider-temperature', providerDefaults.provider_temperature),
+        provider_top_p: readNumberInput('provider-top-p', providerDefaults.provider_top_p),
+        provider_max_tokens: Math.max(64, Math.round(readNumberInput('provider-max-tokens', providerDefaults.provider_max_tokens))),
+        provider_timeout_seconds: Math.max(5, Math.round(readNumberInput('provider-timeout-seconds', providerDefaults.provider_timeout_seconds))),
+        provider_retry_attempts: Math.max(0, Math.round(readNumberInput('provider-retry-attempts', providerDefaults.provider_retry_attempts))),
+        allowed_origins: serializeList(document.getElementById('allowed-origins').value),
     };
 }
 
@@ -672,6 +973,37 @@ async function refreshDeployment() {
     renderWizard();
 }
 
+async function openKongKongWorkspace() {
+    if (!state.deployment || !state.deployment.kongkong_instance) return;
+    try {
+        const data = await fetchJson(`/api/kongkong/instances/${state.deployment.kongkong_instance.id}/launch-link`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        const launch = data.launch || {};
+        if (launch.launch_url) {
+            window.open(launch.launch_url, '_blank', 'noopener');
+        }
+        toast(launch.gateway_token ? `已打开入口，如需 Gateway Token 请使用：${launch.gateway_token}` : '已打开空空工作台入口', true);
+    } catch (error) {
+        toast(error.message || '打开空空工作台失败', false);
+    }
+}
+
+async function runKongKongAction(action) {
+    if (!state.deployment || !state.deployment.kongkong_instance) return;
+    try {
+        await fetchJson(`/api/kongkong/instances/${state.deployment.kongkong_instance.id}/${action}`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        await refreshDeployment();
+        toast('空空实例状态已更新', true);
+    } catch (error) {
+        toast(error.message || '更新空空实例状态失败', false);
+    }
+}
+
 function fillExampleKnowledge() {
     const titleEl = document.getElementById('doc-title');
     const contentEl = document.getElementById('doc-content');
@@ -711,6 +1043,7 @@ async function init() {
         return;
     }
     try {
+        await loadRuntimeConfig();
         await loadOrganizations();
         if (deploymentIdParam) {
             await loadDeploymentDetail(deploymentIdParam);

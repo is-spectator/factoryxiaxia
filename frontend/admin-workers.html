@@ -53,6 +53,12 @@
                         <option value="busy">忙碌</option>
                         <option value="offline">离线</option>
                     </select>
+                    <select id="launch-filter" onchange="loadWorkers()" class="bg-white/5 border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                        <option value="">全部市场状态</option>
+                        <option value="public">公开上架</option>
+                        <option value="launch">首发可购买</option>
+                        <option value="internal">内测中</option>
+                    </select>
                     <button onclick="loadWorkers()" class="bg-white/5 border border-white/10 px-4 py-2 rounded-lg text-sm transition hover:bg-white/10">搜索</button>
                     <button onclick="openModal()" class="bg-[#6A0DAD] hover:bg-[#8A2BE2] px-4 py-2 rounded-lg text-sm font-bold transition">+ 新增员工</button>
                 </div>
@@ -60,7 +66,7 @@
             <div class="card overflow-hidden">
                 <table class="w-full text-sm text-left">
                     <thead class="bg-white/5 text-gray-400 text-xs uppercase">
-                        <tr><th class="px-4 py-3">ID</th><th class="px-4 py-3">员工</th><th class="px-4 py-3">分类</th><th class="px-4 py-3">等级</th><th class="px-4 py-3">单价</th><th class="px-4 py-3">状态</th><th class="px-4 py-3">评分</th><th class="px-4 py-3">订单数</th><th class="px-4 py-3">操作</th></tr>
+                        <tr><th class="px-4 py-3">ID</th><th class="px-4 py-3">员工</th><th class="px-4 py-3">分类</th><th class="px-4 py-3">等级</th><th class="px-4 py-3">单价</th><th class="px-4 py-3">状态</th><th class="px-4 py-3">市场状态</th><th class="px-4 py-3">评分</th><th class="px-4 py-3">订单数</th><th class="px-4 py-3">操作</th></tr>
                     </thead>
                     <tbody id="worker-tbody" class="divide-y divide-white/5"></tbody>
                 </table>
@@ -90,6 +96,7 @@
                 <div><label class="text-xs text-gray-400 block mb-1">图标</label><input id="f-icon" value="mdi:robot-happy-outline" class="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none"/></div>
                 <div><label class="text-xs text-gray-400 block mb-1">状态</label><select id="f-status" class="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none"><option value="online">在线</option><option value="busy">忙碌</option><option value="offline">离线</option></select></div>
             </div>
+            <div><label class="text-xs text-gray-400 block mb-1">市场状态</label><select id="f-launch-stage" class="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none"><option value="public">公开上架</option><option value="launch">首发可购买</option><option value="internal">内测中</option></select></div>
             <div class="grid grid-cols-2 gap-4">
                 <div><label class="text-xs text-gray-400 block mb-1">渐变色起始</label><input id="f-gfrom" type="color" value="#6A0DAD" class="w-full h-10 rounded-lg bg-transparent border border-white/20 cursor-pointer"/></div>
                 <div><label class="text-xs text-gray-400 block mb-1">渐变色结束</label><input id="f-gto" type="color" value="#00D2FF" class="w-full h-10 rounded-lg bg-transparent border border-white/20 cursor-pointer"/></div>
@@ -111,6 +118,7 @@ function logout() { localStorage.removeItem('xiaxia_token'); localStorage.remove
 let currentPage = 1;
 let categories = [];
 const statusLabel = { online: '<span class="text-green-400">在线</span>', busy: '<span class="text-orange-400">忙碌</span>', offline: '<span class="text-gray-500">离线</span>' };
+const launchStageLabel = { public: '<span class="text-gray-300">公开上架</span>', launch: '<span class="text-emerald-300">首发可购买</span>', internal: '<span class="text-amber-300">内测中</span>' };
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
 
@@ -127,9 +135,11 @@ async function loadCategories() {
 async function loadWorkers() {
     const kw = document.getElementById('kw').value.trim();
     const status = document.getElementById('status-filter').value;
+    const launchStage = document.getElementById('launch-filter').value;
     let url = `/api/admin/workers?page=${currentPage}&per_page=15`;
     if (kw) url += `&keyword=${encodeURIComponent(kw)}`;
     if (status) url += `&status=${status}`;
+    if (launchStage) url += `&launch_stage=${launchStage}`;
 
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token }});
     if (res.status === 403) { toast('无管理员权限', false); return; }
@@ -150,6 +160,7 @@ async function loadWorkers() {
             <td class="px-4 py-3">Lv.${w.level}</td>
             <td class="px-4 py-3">￥${w.hourly_rate.toFixed(2)}</td>
             <td class="px-4 py-3">${statusLabel[w.status] || w.status}</td>
+            <td class="px-4 py-3">${launchStageLabel[w.launch_stage || 'public'] || (w.launch_stage || 'public')}</td>
             <td class="px-4 py-3">${w.rating}</td>
             <td class="px-4 py-3">${w.total_orders}</td>
             <td class="px-4 py-3 space-x-2">
@@ -158,7 +169,7 @@ async function loadWorkers() {
                 <button onclick="deleteWorker(${w.id})" class="text-xs text-red-400 hover:text-red-300">删除</button>
             </td>
         </tr>
-    `).join('') || '<tr><td colspan="9" class="text-center py-10 text-gray-500">暂无员工</td></tr>';
+    `).join('') || '<tr><td colspan="10" class="text-center py-10 text-gray-500">暂无员工</td></tr>';
 
     renderPagination(d.page, d.pages);
 }
@@ -176,6 +187,7 @@ function openModal(worker) {
         document.getElementById('f-skills').value = (worker.skills || []).join(',');
         document.getElementById('f-icon').value = worker.avatar_icon;
         document.getElementById('f-status').value = worker.status;
+        document.getElementById('f-launch-stage').value = worker.launch_stage || 'public';
         document.getElementById('f-gfrom').value = worker.avatar_gradient_from;
         document.getElementById('f-gto').value = worker.avatar_gradient_to;
         document.getElementById('f-desc').value = worker.description;
@@ -187,6 +199,7 @@ function openModal(worker) {
         document.getElementById('f-level').value = 5;
         document.getElementById('f-icon').value = 'mdi:robot-happy-outline';
         document.getElementById('f-status').value = 'online';
+        document.getElementById('f-launch-stage').value = 'public';
         document.getElementById('f-gfrom').value = '#6A0DAD';
         document.getElementById('f-gto').value = '#00D2FF';
     }
@@ -210,6 +223,7 @@ async function saveWorker() {
         skills: document.getElementById('f-skills').value.trim(),
         avatar_icon: document.getElementById('f-icon').value.trim(),
         status: document.getElementById('f-status').value,
+        launch_stage: document.getElementById('f-launch-stage').value,
         avatar_gradient_from: document.getElementById('f-gfrom').value,
         avatar_gradient_to: document.getElementById('f-gto').value,
         description: document.getElementById('f-desc').value.trim(),

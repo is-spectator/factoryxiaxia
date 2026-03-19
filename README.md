@@ -20,7 +20,10 @@
 ├── backend/
 │   ├── Dockerfile
 │   ├── app.py                  # Flask 应用入口（初始化 + 蓝图注册）
+│   ├── manage.py               # 数据库迁移命令入口
 │   ├── extensions.py           # Flask 扩展实例 (db, limiter)
+│   ├── migration_manager.py    # 迁移状态表 + 迁移执行器
+│   ├── migrations/             # 版本化迁移脚本
 │   ├── models.py               # SQLAlchemy 数据模型
 │   ├── routes/
 │   │   ├── auth.py             # 注册、登录、个人信息
@@ -35,8 +38,8 @@
 │   │   └── helpers.py          # 通用工具函数
 │   ├── tests/
 │   │   ├── conftest.py         # 测试配置 (SQLite monkey-patch)
-│   │   └── test_api.py         # API 测试 (63 cases)
-│   ├── init.sql                # 数据库初始化 + 种子数据
+│   │   └── test_api.py         # API 测试 (80+ cases)
+│   ├── init.sql                # 当前结构快照（用于对照，不再作为生产建库入口）
 │   ├── requirements.txt        # 运行依赖
 │   └── requirements-test.txt   # 测试依赖
 ├── frontend/
@@ -56,16 +59,38 @@
 前置要求：已安装 Docker 和 Docker Compose。
 
 ```bash
+# 本地开发
 ./deploy.sh
+
+# 生产部署
+cp .env.example .env
+# 编辑 .env，至少设置：
+# APP_ENV=production
+# MYSQL_ROOT_PASSWORD / DB_PASS / JWT_SECRET
+# PUBLIC_BASE_URL / ALLOWED_ORIGINS
+# ADMIN_INIT_PASSWORD
+# PUBLIC_CHAT_IP_LIMIT_PER_MINUTE / PUBLIC_CHAT_DEPLOYMENT_LIMIT_PER_MINUTE
+./deploy.sh prod
 ```
+
+`deploy.sh` 现在会先启动数据库，再显式执行：
+
+```bash
+docker compose run --rm backend python manage.py migrate
+```
+
+迁移成功后才会启动后端和前端服务。
 
 启动后：
 
-- 前端：http://localhost:10088
-- 后端 API：http://localhost:5000
-- 数据库：localhost:3306
+- 开发环境前端：http://localhost:10088
+- 开发环境后端 API：http://localhost:5000
+- 生产环境 API：通过前端网关访问 `/api/*`
 
-默认管理员账号：`admin` / `admin123456`
+生产环境不再内置默认管理员账号。
+如果数据库里还没有 `admin` 用户，首次启动会读取 `ADMIN_INIT_*` 环境变量创建一次性管理员。
+生产环境默认走“付款确认 -> 后台确认收款”模式，不再提供一键支付成功的假支付链路。
+生产环境如果存在未执行迁移，后端会直接拒绝启动并提示先运行 `python manage.py migrate`。
 
 ## API 接口
 
@@ -112,13 +137,34 @@ pip install -r requirements-test.txt
 python -m pytest tests/ -v
 ```
 
-当前测试覆盖 63 个用例，包括：
+当前测试覆盖 70+ 个用例，包括：
 - 用户认证（注册/登录/禁用用户拦截）
 - 订单全流程（创建/支付/激活/完成/退款/取消）
 - 状态机校验（管理员非法状态变更拦截）
 - 消息触发（所有核心动作均验证消息生成）
 - 收藏、评价、推荐
 - 安全头、限流、API 文档
+
+## 数据库迁移
+
+数据库结构变更现在通过版本化迁移管理，不再依赖应用启动时自动补列。
+
+```bash
+cd backend
+python manage.py status
+python manage.py migrate
+```
+
+上线顺序建议固定为：
+
+```bash
+# 1. 先备份
+# 2. 再迁移
+docker compose run --rm backend python manage.py migrate
+
+# 3. 最后启动应用
+docker compose up -d backend frontend
+```
 
 ## Docker 部署后冒烟检查
 
@@ -231,18 +277,29 @@ docker compose restart backend
 
 部署到公网前，务必完成以下步骤：
 
-1. 创建 `.env` 文件并修改所有默认密码和密钥
+1. 创建 `.env` 文件并设置 `APP_ENV=production`
 2. 确认 `.env` 已加入 `.gitignore`
-3. 修改 `JWT_SECRET` 为随机强密钥（至少 32 位）
-4. 修改 `DB_PASS` 和 `MYSQL_ROOT_PASSWORD`
-5. 配置 HTTPS（在 Nginx 或负载均衡层）
+3. 设置强随机 `JWT_SECRET`（至少 32 位）
+4. 设置 `DB_PASS` 和 `MYSQL_ROOT_PASSWORD`
+5. 设置 `PUBLIC_BASE_URL` 和 `ALLOWED_ORIGINS`
+6. 设置一次性 `ADMIN_INIT_PASSWORD` 完成管理员初始化
+7. 设置 `PUBLIC_CHAT_IP_LIMIT_PER_MINUTE` 和 `PUBLIC_CHAT_DEPLOYMENT_LIMIT_PER_MINUTE`
+8. 配置 HTTPS（在 Nginx 或负载均衡层）
+9. 确认生产环境支付链路使用“付款确认 / 后台确认收款”，不要对外暴露开发环境快捷支付
+
+### 公开 API 访问规则
+
+- 管理后台域名白名单由 `.env` 中的 `ALLOWED_ORIGINS` 控制
+- 公开聊天接口 `/api/public/chat/<public_token>/message` 支持服务端直接调用
+- 如果你要把机器人挂件嵌入浏览器页面，必须在部署向导里为每个机器人单独配置 `allowed_origins`
+- 浏览器来源不在部署白名单内时，公开 API 会拒绝访问并写入审计日志
 
 ## 环境差异
 
 | 环境 | 数据库 | 密钥 | 限流 |
 |------|--------|------|------|
-| 开发 | MySQL (docker) | 默认值 | 宽松 |
+| 开发 | MySQL (docker) | 本地配置 | 宽松 |
 | 测试 | SQLite 内存 | test-secret | 关闭 |
-| 生产 | MySQL (独立) | 必须自定义 (.env) | 严格 |
+| 生产 | MySQL (docker / 独立) | 必须自定义 (.env) | 严格 |
 
-生产部署前必须修改 `.env` 中的密码和密钥，参考 `.env.example`。
+生产部署前必须修改 `.env` 中的密码和密钥，并通过 `docker-compose.prod.yml` 收起数据库和后端的公网端口。

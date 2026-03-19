@@ -90,6 +90,10 @@
         return !!worker && worker.worker_type === 'agent_service';
     }
 
+    function isKongKongRuntime(worker) {
+        return !!worker && worker.runtime_kind === 'openclaw_managed';
+    }
+
     async function init() {
         if (!workerId) {
             document.getElementById('order-content').innerHTML = '<div class="text-center py-20 text-red-400">缺少参数，请从员工详情页进入</div>';
@@ -111,7 +115,7 @@
         if (isAgentService(w) && !selectedPlanId && (w.service_plans || []).length) {
             selectedPlanId = w.service_plans[0].id;
         }
-        const total = isAgentService(w) ? getSelectedPlanPrice() : (w.hourly_rate * defaultHours).toFixed(2);
+        const total = isAgentService(w) ? getSelectedPlanTotal() : (w.hourly_rate * defaultHours).toFixed(2);
         document.getElementById('order-content').innerHTML = `
             <div class="glass-morphism p-8 rounded-3xl mb-6">
                 <h2 class="text-xl font-bold mb-6 flex items-center">
@@ -127,7 +131,7 @@
                     </div>
                     <div class="ml-auto text-right">
                         <p class="text-xs text-gray-500">${isAgentService(w) ? '套餐起' : w.billing_unit}</p>
-                        <p class="text-xl font-bold">￥${Number(w.hourly_rate).toFixed(2)}${isAgentService(w) ? '/月' : ''}</p>
+                        <p class="text-xl font-bold">￥${Number(w.hourly_rate).toFixed(2)}${isAgentService(w) && !isKongKongRuntime(w) ? '/月' : ''}</p>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -148,16 +152,21 @@
                                         <p class="font-bold">${esc(plan.name)}</p>
                                         <p class="text-xs text-gray-500 mt-1">${esc(plan.description || '官方托管套餐')}</p>
                                     </div>
-                                    <p class="text-xl font-bold">￥${Number(plan.price).toFixed(2)}</p>
+                                    <p class="text-xl font-bold">￥${Number(plan.price).toFixed(2)}${plan.billing_cycle === 'hourly' ? '/小时' : ''}</p>
                                 </div>
                                 <div class="flex flex-wrap gap-2 text-[11px] text-gray-300">
-                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.included_conversations} 对话/月</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.billing_cycle === 'hourly' ? '按小时计费' : `${plan.included_conversations} 对话/月`}</span>
                                     <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.channel_limit} 渠道</span>
                                     <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.seat_limit} 席位</span>
-                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${Math.max(1, Math.round((plan.default_duration_hours || 720) / 24))} 天服务期</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.billing_cycle === 'hourly' ? `${plan.default_duration_hours || 1} 小时起` : `${Math.max(1, Math.round((plan.default_duration_hours || 720) / 24))} 天服务期`}</span>
                                 </div>
                             </button>
                         `).join('')}
+                    </div>
+                    <div id="agent-hourly-wrap" class="mb-6 hidden">
+                        <label class="text-sm text-gray-400 mb-2 block">使用时长（小时）</label>
+                        <input id="agent-hours" type="number" min="1" max="8760" value="${defaultHours}" oninput="syncPlanSummary()" class="w-full bg-white/5 border border-white/20 rounded-xl py-3 px-4 focus:outline-none focus:border-cyan-500 transition text-lg"/>
+                        <p class="text-xs text-gray-500 mt-2">空空小时套餐会按实际购买小时数计费。</p>
                     </div>
                     <div class="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6">
                         <div class="flex justify-between text-sm mb-2">
@@ -174,7 +183,7 @@
                         </div>
                         <div class="border-t border-white/10 pt-3">
                             <p class="text-xs text-gray-500 mb-1">交付说明</p>
-                            <p class="text-sm text-gray-300 leading-6">完成支付后会进入部署向导，继续配置品牌语气、知识库和公开 API。</p>
+                            <p class="text-sm text-gray-300 leading-6">${isKongKongRuntime(w) ? '完成支付后会自动生成专属 OpenClaw 实例，并在控制台里交付入口链接。' : '完成支付后会进入部署向导，继续配置品牌语气、知识库和公开 API。'}</p>
                         </div>
                     </div>
                 ` : `
@@ -223,7 +232,7 @@
                     <span class="iconify mr-2" data-icon="mdi:check-circle-outline"></span>${isAgentService(w) ? '确认购买' : '确认下单'}
                 </button>
             </div>
-            <p class="text-[10px] text-gray-600 text-center mt-4">${isAgentService(w) ? '购买后订单会先进入待支付，支付完成将直接进入部署向导。' : '下单后订单状态为"待支付"，支持随时取消'}</p>
+            <p class="text-[10px] text-gray-600 text-center mt-4">${isKongKongRuntime(w) ? '支付完成后会自动创建并启动空空实例。' : (isAgentService(w) ? '购买后订单会先进入待支付，支付完成将直接进入部署向导。' : '下单后订单状态为"待支付"，支持随时取消')}</p>
         `;
         if (isAgentService(w)) {
             syncPlanSummary();
@@ -236,9 +245,14 @@
         return plans.find(plan => String(plan.id) === String(selectedPlanId)) || plans[0] || null;
     }
 
-    function getSelectedPlanPrice() {
+    function getSelectedPlanTotal() {
         const plan = getSelectedPlan();
-        return plan ? Number(plan.price).toFixed(2) : Number(workerData.hourly_rate || 0).toFixed(2);
+        if (!plan) return Number(workerData.hourly_rate || 0).toFixed(2);
+        if (plan.billing_cycle === 'hourly') {
+            const hours = parseInt((document.getElementById('agent-hours') || {}).value, 10) || plan.default_duration_hours || 1;
+            return (Number(plan.price) * hours).toFixed(2);
+        }
+        return Number(plan.price).toFixed(2);
     }
 
     function selectPlan(planId) {
@@ -258,11 +272,19 @@
         });
 
         const durationDays = Math.max(1, Math.round((plan.default_duration_hours || 720) / 24));
+        const hourlyWrap = document.getElementById('agent-hourly-wrap');
+        if (hourlyWrap) hourlyWrap.classList.toggle('hidden', plan.billing_cycle !== 'hourly');
         document.getElementById('selected-plan-name').textContent = plan.name;
-        document.getElementById('selected-plan-duration').textContent = `${durationDays} 天`;
-        document.getElementById('selected-plan-meta').textContent = `${plan.channel_limit} 渠道 / ${plan.seat_limit} 席位`;
-        document.getElementById('sum-hours').textContent = `${durationDays} 天`;
-        document.getElementById('sum-total').textContent = `￥${Number(plan.price).toFixed(2)}`;
+        document.getElementById('selected-plan-duration').textContent = plan.billing_cycle === 'hourly'
+            ? `${parseInt((document.getElementById('agent-hours') || {}).value, 10) || plan.default_duration_hours || 1} 小时`
+            : `${durationDays} 天`;
+        document.getElementById('selected-plan-meta').textContent = isKongKongRuntime(workerData)
+            ? `${plan.channel_limit} 渠道 / ${plan.seat_limit} 席位 / ${(plan.cpu_limit || 1)} CPU`
+            : `${plan.channel_limit} 渠道 / ${plan.seat_limit} 席位`;
+        document.getElementById('sum-hours').textContent = plan.billing_cycle === 'hourly'
+            ? `${parseInt((document.getElementById('agent-hours') || {}).value, 10) || plan.default_duration_hours || 1} 小时`
+            : `${durationDays} 天`;
+        document.getElementById('sum-total').textContent = `￥${getSelectedPlanTotal()}`;
     }
 
     function setH(h) {
@@ -298,6 +320,9 @@
                 return;
             }
             payload.service_plan_id = plan.id;
+            if (plan.billing_cycle === 'hourly') {
+                payload.duration_hours = parseInt((document.getElementById('agent-hours') || {}).value, 10) || plan.default_duration_hours || 1;
+            }
         } else {
             payload.duration_hours = parseInt(document.getElementById('order-hours').value) || 24;
         }

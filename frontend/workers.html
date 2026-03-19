@@ -60,14 +60,14 @@
                 <p class="official-pill inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.24em] mb-4">
                     <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工专区
                 </p>
-                <h2 class="text-3xl font-bold mb-3">从选型到交付，一次完成</h2>
+                <h2 class="text-3xl font-bold mb-3">首发官方数字员工：Support Responder</h2>
                 <p class="text-sm text-gray-300 max-w-2xl leading-7">
-                    官方上架的数字员工支持套餐购买、知识库配置、发布上线和公开 API 调用。
-                    适合直接卖给企业客户，而不是只做内部演示。
+                    当前正式开放购买的是数字客服员工 `Support Responder`。
+                    它支持套餐购买、知识库配置、发布上线和公开 API 调用，适合直接卖给企业客户。
                 </p>
             </div>
             <button onclick="filterWorkerType('agent_service')" class="bg-cyan-400 hover:bg-cyan-300 text-black px-6 py-3 rounded-2xl font-bold transition inline-flex items-center justify-center">
-                <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>只看官方机器人
+                <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>只看首发机器人
             </button>
         </div>
         <div id="official-featured" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -139,6 +139,20 @@
         wechat_official_account_manager: {
             slogan: '为企业交付可落地的公众号自动回复与内容运营机器人。',
             chips: ['公众号回复', '内容规划', '私域转化'],
+        },
+    };
+    const launchStageMetaMap = {
+        launch: {
+            label: '首发可购买',
+            badgeClass: 'bg-emerald-400/10 text-emerald-300 border border-emerald-400/20',
+        },
+        internal: {
+            label: '内测中',
+            badgeClass: 'bg-amber-400/10 text-amber-300 border border-amber-400/20',
+        },
+        public: {
+            label: '已上架',
+            badgeClass: 'official-pill',
         },
     };
 
@@ -221,6 +235,7 @@
         }
         container.innerHTML = workers.map(w => {
             const meta = officialCopyMap[w.template_key] || { slogan: '支持下单、部署和公开 API 调用。', chips: ['官方上架', '可部署', '可售卖'] };
+            const launchMeta = launchStageMetaMap[w.launch_stage || 'public'] || launchStageMetaMap.public;
             return `
                 <a href="worker-detail.html?id=${w.id}" class="group rounded-[1.75rem] border border-white/10 bg-black/20 p-6 hover:border-cyan-400/50 transition block">
                     <div class="flex items-start justify-between gap-4 mb-6">
@@ -229,8 +244,8 @@
                                 <span class="iconify text-3xl" data-icon="${w.avatar_icon}"></span>
                             </div>
                             <div>
-                                <p class="official-pill inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full uppercase tracking-[0.2em] mb-2">
-                                    <span class="iconify" data-icon="mdi:check-decagram-outline"></span>官方上架
+                                <p class="${launchMeta.badgeClass} inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full uppercase tracking-[0.2em] mb-2">
+                                    <span class="iconify" data-icon="mdi:check-decagram-outline"></span>${launchMeta.label}
                                 </p>
                                 <h3 class="text-xl font-bold">${esc(w.name)}</h3>
                                 <p class="text-xs text-gray-400 mt-1">${esc(w.category_name)} · Lv.${esc(w.level)}</p>
@@ -344,7 +359,7 @@
                         <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#050714] status-dot-${w.status}"></div>
                     </div>
                     <div class="flex flex-col items-end gap-2">
-                        ${w.worker_type === 'agent_service' ? '<span class="official-pill text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">官方</span>' : ''}
+                        ${w.worker_type === 'agent_service' ? `<span class="${((launchStageMetaMap[w.launch_stage || 'public'] || launchStageMetaMap.public).badgeClass)} text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">${(launchStageMetaMap[w.launch_stage || 'public'] || launchStageMetaMap.public).label}</span>` : ''}
                         <span class="bg-white/10 text-[10px] px-2 py-1 rounded-md uppercase tracking-widest">Lv. ${w.level}</span>
                     </div>
                 </div>

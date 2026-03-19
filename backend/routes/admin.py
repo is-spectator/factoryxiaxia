@@ -3,8 +3,9 @@ import datetime
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import (User, Worker, Category, Order, ROLES,
-                    ORDER_STATUSES, ORDER_TRANSITIONS, AgentTemplate,
-                    ServicePlan, Deployment, AuditLog)
+                    ORDER_STATUSES, ORDER_TRANSITIONS, WORKER_LAUNCH_STAGES, AgentTemplate,
+                    ServicePlan, Deployment, AuditLog, Payment)
+from services.audit_service import record_audit
 from utils.auth import require_admin
 from services.messages import send_message
 
@@ -152,6 +153,7 @@ def admin_list_workers():
     category_id = request.args.get("category_id", type=int)
     status = request.args.get("status", type=str)
     worker_type = request.args.get("worker_type", type=str)
+    launch_stage = request.args.get("launch_stage", type=str)
 
     query = Worker.query
     if keyword:
@@ -163,6 +165,8 @@ def admin_list_workers():
         query = query.filter_by(status=status)
     if worker_type:
         query = query.filter_by(worker_type=worker_type)
+    if launch_stage:
+        query = query.filter_by(launch_stage=launch_stage)
     query = query.order_by(Worker.id.desc())
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -207,7 +211,9 @@ def admin_create_worker():
         status=data.get("status", "online"),
         worker_type=data.get("worker_type", "general"),
         delivery_mode=data.get("delivery_mode", "manual_service"),
+        launch_stage=data.get("launch_stage", "public") if data.get("launch_stage", "public") in WORKER_LAUNCH_STAGES else "public",
         template_key=data.get("template_key"),
+        runtime_kind=data.get("runtime_kind", "none"),
     )
     db.session.add(worker)
     db.session.commit()
@@ -227,9 +233,11 @@ def admin_update_worker(worker_id):
     data = request.get_json(silent=True) or {}
     for field in ["name", "avatar_icon", "avatar_gradient_from", "avatar_gradient_to",
                   "skills", "description", "billing_unit", "status",
-                  "worker_type", "delivery_mode", "template_key"]:
+                  "worker_type", "delivery_mode", "template_key", "runtime_kind"]:
         if field in data:
             setattr(worker, field, data[field])
+    if "launch_stage" in data and data["launch_stage"] in WORKER_LAUNCH_STAGES:
+        worker.launch_stage = data["launch_stage"]
     if "category_id" in data:
         cat = Category.query.get(data["category_id"])
         if not cat:
@@ -326,6 +334,10 @@ def admin_create_service_plan():
         channel_limit=data.get("channel_limit", 1),
         seat_limit=data.get("seat_limit", 1),
         default_duration_hours=data.get("default_duration_hours", 720),
+        instance_type=(data.get("instance_type") or "standard").strip() or "standard",
+        cpu_limit=data.get("cpu_limit", 1.0),
+        memory_limit_mb=data.get("memory_limit_mb", 2048),
+        storage_limit_gb=data.get("storage_limit_gb", 10),
         is_active=bool(data.get("is_active", True)),
     )
     db.session.add(plan)
@@ -348,9 +360,13 @@ def admin_update_service_plan(plan_id):
         if field in data:
             setattr(plan, field, (data.get(field) or "").strip())
     for field in ["included_conversations", "max_handoffs", "channel_limit",
-                  "seat_limit", "default_duration_hours"]:
+                  "seat_limit", "default_duration_hours", "memory_limit_mb", "storage_limit_gb"]:
         if field in data:
             setattr(plan, field, int(data[field]))
+    if "instance_type" in data:
+        plan.instance_type = (data.get("instance_type") or "").strip()
+    if "cpu_limit" in data:
+        plan.cpu_limit = data["cpu_limit"]
     if "price" in data:
         plan.price = data["price"]
     if "is_active" in data:
@@ -435,6 +451,9 @@ def admin_list_orders():
     for o in pagination.items:
         d = o.to_dict()
         d["username"] = o.user.username if o.user else None
+        latest_payment = Payment.query.filter_by(order_id=o.id).order_by(Payment.created_at.desc()).first()
+        d["latest_payment_status"] = latest_payment.status if latest_payment else None
+        d["latest_payment_method"] = latest_payment.method if latest_payment else None
         orders.append(d)
 
     return jsonify({
@@ -488,3 +507,82 @@ def admin_update_order_status(order_id):
                  "order", order.id)
     db.session.commit()
     return jsonify({"message": "状态已更新", "order": order.to_dict()}), 200
+
+
+@bp.route("/api/admin/orders/<int:order_id>/confirm-payment", methods=["POST"])
+def admin_confirm_payment(order_id):
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.status != "payment_pending":
+        return jsonify({"error": "当前订单不在待确认收款状态"}), 400
+
+    payment = Payment.query.filter_by(order_id=order.id, status="pending_review").order_by(Payment.id.desc()).first()
+    if not payment:
+        return jsonify({"error": "未找到待审核付款记录"}), 400
+
+    now = datetime.datetime.utcnow()
+    order.status = "paid"
+    order.paid_at = now
+    payment.status = "success"
+    payment.paid_at = now
+
+    send_message(
+        order.user_id,
+        "收款已确认",
+        f"订单 {order.order_no} 已确认收款，现可继续部署或开始服务。",
+        "order",
+        order.id,
+    )
+    record_audit(
+        action_type="payment.confirmed",
+        resource_type="order",
+        resource_id=order.id,
+        actor_user_id=admin.id,
+        summary=f"后台确认订单 {order.order_no} 收款",
+        details={"payment_id": payment.id, "method": payment.method},
+    )
+    db.session.commit()
+    return jsonify({"message": "收款已确认", "order": order.to_dict(), "payment": payment.to_dict()}), 200
+
+
+@bp.route("/api/admin/orders/<int:order_id>/reject-payment", methods=["POST"])
+def admin_reject_payment(order_id):
+    admin = require_admin()
+    if not admin:
+        return jsonify({"error": "无管理员权限"}), 403
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.status != "payment_pending":
+        return jsonify({"error": "当前订单不在待确认收款状态"}), 400
+
+    payment = Payment.query.filter_by(order_id=order.id, status="pending_review").order_by(Payment.id.desc()).first()
+    if not payment:
+        return jsonify({"error": "未找到待审核付款记录"}), 400
+
+    payment.status = "failed"
+    order.status = "pending"
+
+    send_message(
+        order.user_id,
+        "付款确认未通过",
+        f"订单 {order.order_no} 的付款确认未通过，请补充打款信息后重新提交。",
+        "order",
+        order.id,
+    )
+    record_audit(
+        action_type="payment.rejected",
+        resource_type="order",
+        resource_id=order.id,
+        actor_user_id=admin.id,
+        summary=f"后台驳回订单 {order.order_no} 付款确认",
+        details={"payment_id": payment.id, "method": payment.method},
+    )
+    db.session.commit()
+    return jsonify({"message": "付款确认已驳回", "order": order.to_dict(), "payment": payment.to_dict()}), 200

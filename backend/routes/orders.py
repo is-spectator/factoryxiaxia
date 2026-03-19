@@ -1,14 +1,33 @@
 """订单、支付、评价、收藏、消息路由"""
 import datetime
+import os
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import (Order, Worker, Payment, Review, Message,
                     Favorite, ServicePlan, ORDER_TRANSITIONS)
+from services.audit_service import record_audit
 from utils.auth import get_current_user, require_admin
 from utils.helpers import generate_order_no, generate_payment_no
 from services.messages import send_message
 
 bp = Blueprint("orders", __name__)
+
+
+def get_payment_mode():
+    return "manual_review" if (os.environ.get("APP_ENV") or "").strip().lower() == "production" else "mock"
+
+
+def build_payment_record(order, user_id, method, status, note="", paid_at=None):
+    return Payment(
+        payment_no=generate_payment_no(),
+        order_id=order.id,
+        user_id=user_id,
+        amount=order.total_amount,
+        method=method,
+        status=status,
+        paid_at=paid_at or datetime.datetime.utcnow(),
+        refunded_at=None,
+    )
 
 
 # ===== 订单 =====
@@ -47,8 +66,17 @@ def create_order():
         ).first()
         if not service_plan:
             return jsonify({"error": "服务套餐不存在或已下架"}), 400
-        duration_hours = service_plan.default_duration_hours
-        total_amount = float(service_plan.price)
+        if (service_plan.billing_cycle or "monthly") == "hourly":
+            try:
+                duration_hours = int(duration_hours or service_plan.default_duration_hours or 1)
+            except (TypeError, ValueError):
+                return jsonify({"error": "小时套餐请填写合法的使用时长"}), 400
+            if duration_hours < 1 or duration_hours > 8760:
+                return jsonify({"error": "小时套餐时长应在1-8760小时之间"}), 400
+            total_amount = round(float(service_plan.price) * duration_hours, 2)
+        else:
+            duration_hours = service_plan.default_duration_hours
+            total_amount = float(service_plan.price)
         order_type = "agent_deployment"
     else:
         if duration_hours is None:
@@ -147,7 +175,7 @@ def cancel_order(order_id):
 
 @bp.route("/api/orders/<int:order_id>/pay", methods=["POST"])
 def pay_order(order_id):
-    """模拟支付（开发环境）"""
+    """开发环境支付；生产环境禁用 mock 支付。"""
     user = get_current_user()
     if not user:
         return jsonify({"error": "请先登录"}), 401
@@ -157,6 +185,11 @@ def pay_order(order_id):
         return jsonify({"error": "订单不存在"}), 404
     if order.user_id != user.id:
         return jsonify({"error": "无权操作此订单"}), 403
+
+    payment_mode = get_payment_mode()
+
+    if payment_mode == "manual_review":
+        return jsonify({"error": "生产环境已关闭模拟支付，请提交付款确认并等待后台审核"}), 400
 
     # 幂等性：已支付状态 + 有成功支付记录，直接返回
     if order.status == "paid":
@@ -186,6 +219,14 @@ def pay_order(order_id):
     order.paid_at = now
 
     db.session.add(payment)
+    record_audit(
+        action_type="payment.mock_paid",
+        resource_type="order",
+        resource_id=order.id,
+        actor_user_id=user.id,
+        summary=f"订单 {order.order_no} 完成开发环境支付",
+        details={"method": method, "payment_mode": payment_mode},
+    )
     send_message(user.id, "支付成功",
                  f"订单 {order.order_no} 支付成功，金额 ￥{float(order.total_amount):.2f}",
                  "order", order.id)
@@ -193,6 +234,79 @@ def pay_order(order_id):
 
     return jsonify({
         "message": "支付成功",
+        "order": order.to_dict(),
+        "payment": payment.to_dict(),
+    }), 200
+
+
+@bp.route("/api/orders/<int:order_id>/payment-review", methods=["POST"])
+def submit_payment_review(order_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "请先登录"}), 401
+
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "订单不存在"}), 404
+    if order.user_id != user.id:
+        return jsonify({"error": "无权操作此订单"}), 403
+
+    if order.status == "payment_pending":
+        existing = Payment.query.filter_by(order_id=order.id, status="pending_review").order_by(Payment.id.desc()).first()
+        return jsonify({
+            "message": "付款确认已提交，请等待后台审核",
+            "order": order.to_dict(),
+            "payment": existing.to_dict() if existing else None,
+        }), 200
+
+    if "payment_pending" not in ORDER_TRANSITIONS.get(order.status, []):
+        return jsonify({"error": f"当前状态({order.status})无法提交付款确认"}), 400
+
+    data = request.get_json(silent=True) or {}
+    method = (data.get("method") or "offline_review").strip() or "offline_review"
+    if method == "mock":
+        method = "offline_review"
+    payer_name = (data.get("payer_name") or "").strip()
+    external_ref = (data.get("external_ref") or "").strip()
+    note = (data.get("note") or "").strip()
+
+    payment = build_payment_record(
+        order=order,
+        user_id=user.id,
+        method=method,
+        status="pending_review",
+        note=note,
+    )
+    payment.refunded_at = None
+    db.session.add(payment)
+
+    order.status = "payment_pending"
+    order.remark = note or order.remark
+
+    record_audit(
+        action_type="payment.review_requested",
+        resource_type="order",
+        resource_id=order.id,
+        actor_user_id=user.id,
+        summary=f"订单 {order.order_no} 提交付款确认",
+        details={
+            "method": method,
+            "payer_name": payer_name,
+            "external_ref": external_ref,
+            "note": note,
+            "payment_mode": get_payment_mode(),
+        },
+    )
+    send_message(
+        user.id,
+        "付款确认已提交",
+        f"订单 {order.order_no} 已提交付款确认，请等待后台审核收款。",
+        "order",
+        order.id,
+    )
+    db.session.commit()
+    return jsonify({
+        "message": "付款确认已提交，请等待后台审核",
         "order": order.to_dict(),
         "payment": payment.to_dict(),
     }), 200

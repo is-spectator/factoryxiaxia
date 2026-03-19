@@ -60,6 +60,7 @@
     <div class="flex flex-wrap gap-2 mb-8">
         <button onclick="filterStatus(null)" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 bg-[#6A0DAD]/30 border-[#6A0DAD] text-white transition" data-s="all">全部</button>
         <button onclick="filterStatus('pending')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-yellow-500" data-s="pending">待支付</button>
+        <button onclick="filterStatus('payment_pending')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-cyan-500" data-s="payment_pending">待确认收款</button>
         <button onclick="filterStatus('paid')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-blue-500" data-s="paid">已支付</button>
         <button onclick="filterStatus('active')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-green-500" data-s="active">服务中</button>
         <button onclick="filterStatus('completed')" class="status-btn px-4 py-2 rounded-full text-sm border border-white/20 text-gray-400 transition hover:border-gray-400" data-s="completed">已完成</button>
@@ -95,9 +96,11 @@
     function toast(msg, ok) { const el = document.createElement('div'); el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err'); el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); }
     let currentPage = 1;
     let currentStatus = null;
+    let paymentMode = 'mock';
 
     const statusConfig = {
         pending:   { label: '待支付', color: 'text-yellow-400', bg: 'bg-yellow-500/20', icon: 'mdi:clock-outline' },
+        payment_pending: { label: '待确认收款', color: 'text-cyan-300', bg: 'bg-cyan-400/20', icon: 'mdi:bank-check-outline' },
         paid:      { label: '已支付', color: 'text-blue-400', bg: 'bg-blue-500/20', icon: 'mdi:credit-card-check-outline' },
         active:    { label: '服务中', color: 'text-green-400', bg: 'bg-green-500/20', icon: 'mdi:play-circle-outline' },
         completed: { label: '已完成', color: 'text-gray-400', bg: 'bg-gray-500/20', icon: 'mdi:check-circle-outline' },
@@ -118,6 +121,16 @@
             target.classList.remove('text-gray-400', 'border-white/20');
         }
         loadOrders();
+    }
+
+    async function loadRuntimeConfig() {
+        try {
+            const res = await fetch('/api/runtime-config');
+            const data = await res.json();
+            paymentMode = data.payment_mode || 'mock';
+        } catch (error) {
+            paymentMode = 'mock';
+        }
     }
 
     async function loadOrders() {
@@ -196,6 +209,8 @@
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <a href="order-detail.html?order_id=${o.id}" class="text-xs border border-white/15 px-3 py-2 rounded-lg hover:bg-white/5 transition">查看订单</a>
+                        ${o.status === 'pending' ? `<a href="pay.html?order_id=${o.id}" class="text-xs border border-cyan-400/25 text-cyan-300 px-3 py-2 rounded-lg hover:bg-cyan-400/10 transition">${paymentMode === 'manual_review' ? '提交付款确认' : '去支付'}</a>` : ''}
+                        ${o.status === 'payment_pending' ? `<a href="pay.html?order_id=${o.id}" class="text-xs border border-cyan-400/25 text-cyan-300 px-3 py-2 rounded-lg hover:bg-cyan-400/10 transition">查看付款确认</a>` : ''}
                         ${canSetupDeployment ? `<a href="deployment-setup.html?order_id=${o.id}" class="text-xs border border-cyan-400/25 text-cyan-300 px-3 py-2 rounded-lg hover:bg-cyan-400/10 transition">部署向导</a>` : ''}
                     </div>
                 </div>
@@ -242,7 +257,7 @@
 
     function goPage(p) { currentPage = p; loadOrders(); window.scrollTo({top: 0, behavior: 'smooth'}); }
 
-    loadOrders();
+    loadRuntimeConfig().then(loadOrders);
 </script>
 </body>
 </html>

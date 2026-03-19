@@ -25,7 +25,9 @@ def get_workers():
     worker_type = request.args.get("worker_type", type=str)
     sort_by = request.args.get("sort_by", "total_orders", type=str)
 
-    query = Worker.query
+    query = Worker.query.filter(
+        db.or_(Worker.launch_stage.is_(None), Worker.launch_stage != "internal")
+    )
 
     if category_id:
         query = query.filter(Worker.category_id == category_id)
@@ -122,6 +124,7 @@ def get_recommendations():
             query = Worker.query.filter(
                 Worker.category_id.in_(cat_ids),
                 Worker.status != "offline",
+                db.or_(Worker.launch_stage.is_(None), Worker.launch_stage != "internal"),
             )
             if exclude_ids:
                 query = query.filter(~Worker.id.in_(exclude_ids))
@@ -131,13 +134,17 @@ def get_recommendations():
                 existing_ids = [w.id for w in recs] + exclude_ids
                 extra = Worker.query.filter(
                     Worker.status != "offline",
+                    db.or_(Worker.launch_stage.is_(None), Worker.launch_stage != "internal"),
                     ~Worker.id.in_(existing_ids) if existing_ids else True,
                 ).order_by(Worker.total_orders.desc()).limit(limit - len(recs)).all()
                 recs.extend(extra)
 
             return jsonify({"recommendations": [w.to_brief_dict() for w in recs], "strategy": "personalized"}), 200
 
-    hot = Worker.query.filter(Worker.status != "offline").order_by(
+    hot = Worker.query.filter(
+        Worker.status != "offline",
+        db.or_(Worker.launch_stage.is_(None), Worker.launch_stage != "internal"),
+    ).order_by(
         Worker.total_orders.desc(), Worker.rating.desc()
     ).limit(limit).all()
     return jsonify({"recommendations": [w.to_brief_dict() for w in hot], "strategy": "popular"}), 200

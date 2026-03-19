@@ -6,12 +6,17 @@ from extensions import db
 
 ROLES = ["user", "operator", "admin"]
 
-ORDER_STATUSES = ["pending", "paid", "active", "completed", "cancelled", "refunded"]
+ORDER_STATUSES = ["pending", "payment_pending", "paid", "active", "completed", "cancelled", "refunded"]
 WORKER_TYPES = ["general", "agent_service"]
 DELIVERY_MODES = ["manual_service", "managed_deployment"]
+WORKER_LAUNCH_STAGES = ["public", "launch", "internal"]
+WORKER_RUNTIME_KINDS = ["none", "openclaw_managed"]
 ORDER_TYPES = ["rental", "agent_deployment"]
 DEPLOYMENT_STATUSES = [
     "pending_setup", "pending_review", "active", "suspended", "expired",
+]
+KONGKONG_INSTANCE_STATUSES = [
+    "provisioning", "running", "stopped", "suspended", "error", "destroyed",
 ]
 KNOWLEDGE_BASE_STATUSES = ["draft", "active", "archived"]
 DOCUMENT_STATUSES = ["draft", "published", "archived"]
@@ -22,7 +27,8 @@ USAGE_METRIC_TYPES = ["message_in", "message_out", "knowledge_hit", "handoff"]
 
 # 订单状态机: 当前状态 → 允许的目标状态
 ORDER_TRANSITIONS = {
-    "pending": ["paid", "cancelled"],
+    "pending": ["payment_pending", "paid", "cancelled"],
+    "payment_pending": ["paid", "cancelled"],
     "paid": ["active", "refunded"],
     "active": ["completed", "refunded"],
     "completed": [],
@@ -142,7 +148,9 @@ class Worker(db.Model):
     status = db.Column(db.String(20), default="online")  # online/busy/offline
     worker_type = db.Column(db.String(30), default="general")
     delivery_mode = db.Column(db.String(30), default="manual_service")
+    launch_stage = db.Column(db.String(20), default="public")
     template_key = db.Column(db.String(80), nullable=True)
+    runtime_kind = db.Column(db.String(40), default="none")
     rating = db.Column(db.Numeric(2, 1), default=5.0)
     total_orders = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
@@ -166,7 +174,9 @@ class Worker(db.Model):
             "status": self.status,
             "worker_type": self.worker_type or "general",
             "delivery_mode": self.delivery_mode or "manual_service",
+            "launch_stage": self.launch_stage or "public",
             "template_key": self.template_key,
+            "runtime_kind": self.runtime_kind or "none",
             "service_plans": [p.to_dict() for p in self.service_plans if p.is_active],
             "rating": float(self.rating) if self.rating else 5.0,
             "total_orders": self.total_orders,
@@ -189,7 +199,9 @@ class Worker(db.Model):
             "status": self.status,
             "worker_type": self.worker_type or "general",
             "delivery_mode": self.delivery_mode or "manual_service",
+            "launch_stage": self.launch_stage or "public",
             "template_key": self.template_key,
+            "runtime_kind": self.runtime_kind or "none",
             "rating": float(self.rating) if self.rating else 5.0,
             "total_orders": self.total_orders,
         }
@@ -210,6 +222,10 @@ class ServicePlan(db.Model):
     channel_limit = db.Column(db.Integer, default=1)
     seat_limit = db.Column(db.Integer, default=1)
     default_duration_hours = db.Column(db.Integer, default=720)
+    instance_type = db.Column(db.String(40), default="standard")
+    cpu_limit = db.Column(db.Numeric(6, 2), default=1.0)
+    memory_limit_mb = db.Column(db.Integer, default=2048)
+    storage_limit_gb = db.Column(db.Integer, default=10)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
@@ -230,6 +246,10 @@ class ServicePlan(db.Model):
             "channel_limit": self.channel_limit,
             "seat_limit": self.seat_limit,
             "default_duration_hours": self.default_duration_hours,
+            "instance_type": self.instance_type,
+            "cpu_limit": float(self.cpu_limit) if self.cpu_limit is not None else 1.0,
+            "memory_limit_mb": self.memory_limit_mb,
+            "storage_limit_gb": self.storage_limit_gb,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -270,9 +290,11 @@ class Order(db.Model):
             "worker_icon": self.worker.avatar_icon if self.worker else None,
             "worker_gradient_from": self.worker.avatar_gradient_from if self.worker else None,
             "worker_gradient_to": self.worker.avatar_gradient_to if self.worker else None,
+            "worker_runtime_kind": self.worker.runtime_kind if self.worker and self.worker.runtime_kind else "none",
             "service_plan_id": self.service_plan_id,
             "service_plan_name": self.service_plan.name if self.service_plan else None,
             "service_plan_slug": self.service_plan.slug if self.service_plan else None,
+            "service_plan_billing_cycle": self.service_plan.billing_cycle if self.service_plan else None,
             "duration_hours": self.duration_hours,
             "total_amount": float(self.total_amount),
             "order_type": self.order_type or "rental",
@@ -302,6 +324,9 @@ class Deployment(db.Model):
     channel_type = db.Column(db.String(30), default="web_widget")
     public_token = db.Column(db.String(120), unique=True, nullable=True)
     config_json = db.Column(db.Text, default="{}")
+    knowledge_version = db.Column(db.String(40), nullable=True)
+    knowledge_last_published_at = db.Column(db.DateTime, nullable=True)
+    knowledge_summary_json = db.Column(db.Text, default="{}")
     started_at = db.Column(db.DateTime, nullable=True)
     suspended_at = db.Column(db.DateTime, nullable=True)
     expires_at = db.Column(db.DateTime, nullable=True)
@@ -319,6 +344,30 @@ class Deployment(db.Model):
             config = json.loads(self.config_json or "{}")
         except (json.JSONDecodeError, TypeError):
             config = {}
+        if not isinstance(config, dict):
+            config = {}
+        try:
+            knowledge_summary = json.loads(self.knowledge_summary_json or "{}")
+        except (json.JSONDecodeError, TypeError):
+            knowledge_summary = {}
+        if not isinstance(knowledge_summary, dict):
+            knowledge_summary = {}
+        config.setdefault("brand_voice", "professional")
+        config.setdefault("business_name", self.deployment_name)
+        config.setdefault("handoff_message", "这个问题我需要转给人工客服继续确认，请稍等。")
+        config.setdefault("pii_masking_enabled", True)
+        config.setdefault("handoff_on_pii", False)
+        config.setdefault("forbidden_topics", [])
+        config.setdefault("sensitive_keywords", [])
+        config.setdefault("provider", "rules")
+        config.setdefault("provider_model", "")
+        config.setdefault("provider_temperature", 0.2)
+        config.setdefault("provider_top_p", 0.8)
+        config.setdefault("provider_max_tokens", 800)
+        config.setdefault("provider_timeout_seconds", 30)
+        config.setdefault("provider_retry_attempts", 1)
+        config.setdefault("allowed_origins", [])
+        config.setdefault("public_access_enabled", True)
         return {
             "id": self.id,
             "organization_id": self.organization_id,
@@ -329,6 +378,7 @@ class Deployment(db.Model):
             "worker_name": self.worker.name if self.worker else None,
             "template_id": self.template_id,
             "template_key": self.template.key if self.template else None,
+            "runtime_kind": self.worker.runtime_kind if self.worker and self.worker.runtime_kind else "none",
             "service_plan_id": self.service_plan_id,
             "service_plan_name": self.service_plan.name if self.service_plan else None,
             "status": self.status,
@@ -336,11 +386,101 @@ class Deployment(db.Model):
             "channel_type": self.channel_type,
             "public_token": self.public_token if self.status == "active" else None,
             "config": config,
+            "knowledge_version": self.knowledge_version,
+            "knowledge_last_published_at": self.knowledge_last_published_at.isoformat() if self.knowledge_last_published_at else None,
+            "knowledge_summary": knowledge_summary,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "suspended_at": self.suspended_at.isoformat() if self.suspended_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "kongkong_instance": self.kongkong_instance.to_dict() if getattr(self, "kongkong_instance", None) else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class KongKongInstance(db.Model):
+    __tablename__ = "kongkong_instances"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    deployment_id = db.Column(db.Integer, db.ForeignKey("deployments.id"), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=False)
+    worker_id = db.Column(db.Integer, db.ForeignKey("workers.id"), nullable=False)
+    service_plan_id = db.Column(db.Integer, db.ForeignKey("service_plans.id"), nullable=True)
+    status = db.Column(db.String(30), default="provisioning")
+    container_name = db.Column(db.String(120), default="")
+    container_id = db.Column(db.String(120), default="")
+    instance_slug = db.Column(db.String(120), unique=True, nullable=False)
+    host_port = db.Column(db.Integer, nullable=True)
+    entry_url = db.Column(db.String(255), default="")
+    gateway_token = db.Column(db.String(160), default="")
+    model_provider = db.Column(db.String(40), default="dashscope")
+    model_name = db.Column(db.String(80), default="qwen-max")
+    workspace_path = db.Column(db.String(255), default="")
+    config_path = db.Column(db.String(255), default="")
+    logs_path = db.Column(db.String(255), default="")
+    cpu_limit = db.Column(db.Numeric(6, 2), default=1.0)
+    memory_limit_mb = db.Column(db.Integer, default=2048)
+    storage_limit_gb = db.Column(db.Integer, default=10)
+    runtime_meta_json = db.Column(db.Text, default="{}")
+    last_heartbeat_at = db.Column(db.DateTime, nullable=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    stopped_at = db.Column(db.DateTime, nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.String(255), default="")
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.datetime.utcnow,
+        onupdate=datetime.datetime.utcnow,
+    )
+
+    deployment = db.relationship("Deployment", backref=db.backref("kongkong_instance", uselist=False), lazy=True)
+    user = db.relationship("User", backref="kongkong_instances", lazy=True)
+    organization = db.relationship("Organization", backref="kongkong_instances", lazy=True)
+    worker = db.relationship("Worker", backref="kongkong_instances", lazy=True)
+    service_plan = db.relationship("ServicePlan", backref="kongkong_instances", lazy=True)
+
+    def to_dict(self, include_secret=False):
+        try:
+            runtime_meta = json.loads(self.runtime_meta_json or "{}")
+        except (json.JSONDecodeError, TypeError):
+            runtime_meta = {}
+        if not isinstance(runtime_meta, dict):
+            runtime_meta = {}
+        payload = {
+            "id": self.id,
+            "deployment_id": self.deployment_id,
+            "user_id": self.user_id,
+            "organization_id": self.organization_id,
+            "worker_id": self.worker_id,
+            "service_plan_id": self.service_plan_id,
+            "status": self.status,
+            "container_name": self.container_name,
+            "container_id": self.container_id,
+            "instance_slug": self.instance_slug,
+            "host_port": self.host_port,
+            "entry_url": self.entry_url,
+            "model_provider": self.model_provider,
+            "model_name": self.model_name,
+            "workspace_path": self.workspace_path,
+            "config_path": self.config_path,
+            "logs_path": self.logs_path,
+            "cpu_limit": float(self.cpu_limit) if self.cpu_limit is not None else 1.0,
+            "memory_limit_mb": self.memory_limit_mb,
+            "storage_limit_gb": self.storage_limit_gb,
+            "runtime_meta": runtime_meta,
+            "last_heartbeat_at": self.last_heartbeat_at.isoformat() if self.last_heartbeat_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "stopped_at": self.stopped_at.isoformat() if self.stopped_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_secret:
+            payload["gateway_token"] = self.gateway_token
+        else:
+            payload["gateway_token_suffix"] = self.gateway_token[-6:] if self.gateway_token else ""
+        return payload
 
 
 class KnowledgeBase(db.Model):
@@ -366,6 +506,8 @@ class KnowledgeBase(db.Model):
             "status": self.status,
             "document_count": len(self.documents),
             "published_document_count": len(published_documents),
+            "total_char_count": sum((doc.char_count or 0) for doc in self.documents),
+            "sample_titles": [doc.title for doc in self.documents[:3]],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "published_at": self.published_at.isoformat() if self.published_at else None,
         }

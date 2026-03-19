@@ -7,10 +7,16 @@ os.environ["DB_PASS"] = "x"
 os.environ["DB_HOST"] = "x"
 os.environ["DB_NAME"] = "x"
 os.environ["JWT_SECRET"] = "test-secret"
+os.environ["APP_ENV"] = "test"
 os.environ["RATE_LIMIT_DEFAULT"] = "9999/minute"
 os.environ["RATE_LIMIT_AUTH"] = "9999/minute"
+os.environ["AGENT_PROVIDER"] = "rules"
+os.environ["KONGKONG_RUNTIME_MODE"] = "mock"
+os.environ.pop("DASHSCOPE_API_KEY", None)
+os.environ.pop("DASHSCOPE_MODEL", None)
 
 import flask_sqlalchemy
+from services.public_api_service import reset_public_api_rate_limits
 
 _orig_init = flask_sqlalchemy.SQLAlchemy.__init__
 _orig_init_app = flask_sqlalchemy.SQLAlchemy.init_app
@@ -36,11 +42,15 @@ import app as flask_app  # noqa: E402
 @pytest.fixture()
 def client():
     flask_app.app.config["TESTING"] = True
+    flask_app.app.config["PUBLIC_CHAT_IP_LIMIT_PER_MINUTE"] = 9999
+    flask_app.app.config["PUBLIC_CHAT_DEPLOYMENT_LIMIT_PER_MINUTE"] = 9999
     with flask_app.app.app_context():
+        reset_public_api_rate_limits()
         flask_app.db.create_all()
         yield flask_app.app.test_client()
         flask_app.db.session.remove()
         flask_app.db.drop_all()
+        reset_public_api_rate_limits()
 
 
 @pytest.fixture()

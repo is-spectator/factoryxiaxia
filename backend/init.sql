@@ -12,10 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 超级管理员账户 (密码: admin123456)
-INSERT INTO users (username, email, password_hash, role, created_at)
-VALUES ('admin', 'admin@xiaxia.factory', '$2b$12$cDbtbODl7aAN9jHNjlchkOGowo8ccvq8sPb2/Lug1wvLh3ap1doZK', 'admin', NOW())
-ON DUPLICATE KEY UPDATE role='admin';
+-- 管理员账户不再写死在仓库中。
+-- 生产环境请通过首次启动初始化流程或显式 bootstrap 命令创建管理员。
 
 CREATE TABLE IF NOT EXISTS organizations (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -65,7 +63,9 @@ CREATE TABLE IF NOT EXISTS workers (
     status VARCHAR(20) DEFAULT 'online',
     worker_type VARCHAR(30) DEFAULT 'general',
     delivery_mode VARCHAR(30) DEFAULT 'manual_service',
+    launch_stage VARCHAR(20) DEFAULT 'public',
     template_key VARCHAR(80) DEFAULT NULL,
+    runtime_kind VARCHAR(40) DEFAULT 'none',
     rating DECIMAL(2,1) DEFAULT 5.0,
     total_orders INT DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -86,6 +86,10 @@ CREATE TABLE IF NOT EXISTS service_plans (
     channel_limit INT DEFAULT 1,
     seat_limit INT DEFAULT 1,
     default_duration_hours INT DEFAULT 720,
+    instance_type VARCHAR(40) DEFAULT 'standard',
+    cpu_limit DECIMAL(6,2) DEFAULT 1.0,
+    memory_limit_mb INT DEFAULT 2048,
+    storage_limit_gb INT DEFAULT 10,
     is_active BOOLEAN DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_worker_plan_slug (worker_id, slug),
@@ -129,6 +133,9 @@ CREATE TABLE IF NOT EXISTS deployments (
     channel_type VARCHAR(30) DEFAULT 'web_widget',
     public_token VARCHAR(120) DEFAULT NULL UNIQUE,
     config_json TEXT DEFAULT NULL,
+    knowledge_version VARCHAR(40) DEFAULT NULL,
+    knowledge_last_published_at DATETIME DEFAULT NULL,
+    knowledge_summary_json TEXT DEFAULT NULL,
     started_at DATETIME DEFAULT NULL,
     suspended_at DATETIME DEFAULT NULL,
     expires_at DATETIME DEFAULT NULL,
@@ -138,6 +145,43 @@ CREATE TABLE IF NOT EXISTS deployments (
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (worker_id) REFERENCES workers(id),
     FOREIGN KEY (template_id) REFERENCES agent_templates(id),
+    FOREIGN KEY (service_plan_id) REFERENCES service_plans(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS kongkong_instances (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    deployment_id INT NOT NULL UNIQUE,
+    user_id INT NOT NULL,
+    organization_id INT NOT NULL,
+    worker_id INT NOT NULL,
+    service_plan_id INT DEFAULT NULL,
+    status VARCHAR(30) DEFAULT 'provisioning',
+    container_name VARCHAR(120) DEFAULT '',
+    container_id VARCHAR(120) DEFAULT '',
+    instance_slug VARCHAR(120) NOT NULL UNIQUE,
+    host_port INT DEFAULT NULL,
+    entry_url VARCHAR(255) DEFAULT '',
+    gateway_token VARCHAR(160) DEFAULT '',
+    model_provider VARCHAR(40) DEFAULT 'dashscope',
+    model_name VARCHAR(80) DEFAULT 'qwen-max',
+    workspace_path VARCHAR(255) DEFAULT '',
+    config_path VARCHAR(255) DEFAULT '',
+    logs_path VARCHAR(255) DEFAULT '',
+    cpu_limit DECIMAL(6,2) DEFAULT 1.0,
+    memory_limit_mb INT DEFAULT 2048,
+    storage_limit_gb INT DEFAULT 10,
+    runtime_meta_json TEXT DEFAULT NULL,
+    last_heartbeat_at DATETIME DEFAULT NULL,
+    started_at DATETIME DEFAULT NULL,
+    stopped_at DATETIME DEFAULT NULL,
+    expires_at DATETIME DEFAULT NULL,
+    error_message VARCHAR(255) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (deployment_id) REFERENCES deployments(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id),
+    FOREIGN KEY (worker_id) REFERENCES workers(id),
     FOREIGN KEY (service_plan_id) REFERENCES service_plans(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -312,6 +356,9 @@ CREATE INDEX idx_service_plans_worker_id ON service_plans(worker_id);
 CREATE INDEX idx_deployments_user_id ON deployments(user_id);
 CREATE INDEX idx_deployments_status ON deployments(status);
 CREATE INDEX idx_deployments_public_token ON deployments(public_token);
+CREATE INDEX idx_kongkong_instances_user_id ON kongkong_instances(user_id);
+CREATE INDEX idx_kongkong_instances_status ON kongkong_instances(status);
+CREATE INDEX idx_kongkong_instances_slug ON kongkong_instances(instance_slug);
 CREATE INDEX idx_knowledge_bases_deployment_id ON knowledge_bases(deployment_id);
 CREATE INDEX idx_knowledge_documents_knowledge_base_id ON knowledge_documents(knowledge_base_id);
 CREATE INDEX idx_knowledge_documents_status ON knowledge_documents(status);
@@ -351,9 +398,23 @@ VALUES (
 )
 ON DUPLICATE KEY UPDATE name=VALUES(name), source_repo=VALUES(source_repo), source_path=VALUES(source_path);
 
+INSERT INTO agent_templates (`key`, name, source_repo, source_path, prompt_template, default_tools, risk_level, is_active)
+VALUES (
+    'kongkong_openclaw_workspace',
+    '空空 OpenClaw Workspace',
+    'https://github.com/openclaw/openclaw',
+    'install/docker',
+    '你是虾虾工厂官方出售的托管式 OpenClaw 数字员工“空空”。你的核心交付不是 FAQ 问答，而是为购买用户提供一份隔离运行的 OpenClaw 工作台实例。实例默认接入 Qwen / DashScope 的 qwen-max 模型，并支持按实例独立运行、暂停、重启和销毁。',
+    '["openclaw_workspace","runtime_isolation","dashscope_qwen"]',
+    'high',
+    TRUE
+)
+ON DUPLICATE KEY UPDATE name=VALUES(name), source_repo=VALUES(source_repo), source_path=VALUES(source_path);
+
 -- ===== 种子数据：分类 =====
 INSERT INTO categories (name, icon, description, sort_order) VALUES
 ('开发工程', 'mdi:code-braces', '全栈开发、后端架构、移动端、DevOps', 1),
+('执行代理', 'mdi:cube-outline', '托管工作台、执行型数字员工、隔离运行环境', 2),
 ('创意设计', 'mdi:palette', 'UI/UX设计、原画插画、3D建模', 2),
 ('智能客服', 'mdi:headphones', '多语言客服、投诉处理、智能应答', 3),
 ('数据分析', 'mdi:chart-areaspline', '数据挖掘、BI报表、金融分析', 4),
@@ -362,6 +423,29 @@ INSERT INTO categories (name, icon, description, sort_order) VALUES
 ('营销推广', 'mdi:search-web', 'SEO优化、广告投放、增长黑客', 7),
 ('游戏策划', 'mdi:controller', '数值策划、关卡设计、游戏测试', 8)
 ON DUPLICATE KEY UPDATE name=name;
+
+INSERT INTO workers (name, category_id, avatar_icon, avatar_gradient_from, avatar_gradient_to, level, skills, description, hourly_rate, billing_unit, status, worker_type, delivery_mode, launch_stage, template_key, runtime_kind, rating, total_orders)
+SELECT
+    '空空',
+    id,
+    'mdi:cube-outline',
+    '#0f172a',
+    '#22d3ee',
+    9,
+    'OpenClaw,容器隔离,Qwen,DashScope,托管工作台',
+    '空空是官方出售的托管式 OpenClaw 数字员工。用户购买后会获得一份独立隔离的 OpenClaw 工作台实例，默认接入 Qwen DashScope 的 qwen-max 模型。',
+    2.00,
+    '￥99/月｜￥2/小时',
+    'online',
+    'agent_service',
+    'managed_deployment',
+    'launch',
+    'kongkong_openclaw_workspace',
+    'openclaw_managed',
+    5.0,
+    0
+FROM categories WHERE name = '执行代理'
+ON DUPLICATE KEY UPDATE name=VALUES(name), template_key=VALUES(template_key), runtime_kind=VALUES(runtime_kind), hourly_rate=VALUES(hourly_rate), billing_unit=VALUES(billing_unit);
 
 -- ===== 种子数据：数字员工（12位） =====
 INSERT INTO workers (name, category_id, avatar_icon, avatar_gradient_from, avatar_gradient_to, level, skills, description, hourly_rate, billing_unit, status, worker_type, delivery_mode, template_key, rating, total_orders) VALUES
@@ -409,3 +493,13 @@ INSERT INTO service_plans (worker_id, slug, name, description, billing_cycle, pr
 SELECT id, 'enterprise', 'Enterprise', '适合多矩阵账号与复杂私域运营', 'monthly', 1999.00, 'CNY', 12000, 300, 5, 8, 720, TRUE
 FROM workers WHERE name = '公众号运营官 #18'
 ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), price=VALUES(price);
+
+INSERT INTO service_plans (worker_id, slug, name, description, billing_cycle, price, currency, included_conversations, max_handoffs, channel_limit, seat_limit, default_duration_hours, instance_type, cpu_limit, memory_limit_mb, storage_limit_gb, is_active)
+SELECT id, 'monthly', 'Monthly', '每月 99 元，适合长期托管使用空空工作台。', 'monthly', 99.00, 'CNY', 0, 0, 1, 1, 720, 'openclaw-standard', 1.0, 2048, 10, TRUE
+FROM workers WHERE name = '空空'
+ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), price=VALUES(price), billing_cycle=VALUES(billing_cycle);
+
+INSERT INTO service_plans (worker_id, slug, name, description, billing_cycle, price, currency, included_conversations, max_handoffs, channel_limit, seat_limit, default_duration_hours, instance_type, cpu_limit, memory_limit_mb, storage_limit_gb, is_active)
+SELECT id, 'hourly', 'Hourly', '按小时计费，2 元 / 小时，适合临时使用或验证流程。', 'hourly', 2.00, 'CNY', 0, 0, 1, 1, 1, 'openclaw-hourly', 1.0, 2048, 10, TRUE
+FROM workers WHERE name = '空空'
+ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), price=VALUES(price), billing_cycle=VALUES(billing_cycle), default_duration_hours=VALUES(default_duration_hours);

@@ -127,6 +127,7 @@ if (!token) window.location.href = 'login.html';
 const params = new URLSearchParams(window.location.search);
 const orderId = params.get('order_id');
 if (!orderId) { window.location.href = 'orders.html'; }
+let paymentMode = 'mock';
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -143,6 +144,7 @@ function toast(msg, ok) { const el = document.createElement('div'); el.className
 
 const statusMap = {
     pending:   { icon: 'mdi:clock-outline', color: 'text-yellow-400', label: '待支付', desc: '请在30分钟内完成支付，逾期将自动取消' },
+    payment_pending: { icon: 'mdi:bank-check-outline', color: 'text-cyan-300', label: '待确认收款', desc: '已提交付款确认，等待后台审核收款' },
     paid:      { icon: 'mdi:check-circle-outline', color: 'text-blue-400', label: '已支付', desc: '支付成功，等待服务开始' },
     active:    { icon: 'mdi:play-circle-outline', color: 'text-green-400', label: '服务中', desc: '数字员工正在为您工作' },
     completed: { icon: 'mdi:flag-checkered', color: 'text-gray-400', label: '已完成', desc: '服务已完成，感谢使用' },
@@ -157,9 +159,19 @@ const timelineSteps = [
     { key: 'completed', label: '服务完成', icon: 'mdi:flag-checkered' },
 ];
 
-const statusIndex = { pending: 0, paid: 1, active: 2, completed: 3 };
+const statusIndex = { pending: 0, payment_pending: 0, paid: 1, active: 2, completed: 3 };
 
 let selectedRating = 0;
+
+async function loadRuntimeConfig() {
+    try {
+        const res = await fetch('/api/runtime-config');
+        const data = await res.json();
+        paymentMode = data.payment_mode || 'mock';
+    } catch (error) {
+        paymentMode = 'mock';
+    }
+}
 
 async function loadOrder() {
     const res = await fetch(`/api/orders/${orderId}`, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -269,7 +281,10 @@ function renderActions(o) {
     const isAgentDeployment = o.order_type === 'agent_deployment';
 
     if (o.status === 'pending') {
-        html += `<a href="pay.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">立即支付</a>`;
+        html += `<a href="pay.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">${paymentMode === 'manual_review' ? '提交付款确认' : '立即支付'}</a>`;
+        html += `<button onclick="doAction('cancel')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">取消订单</button>`;
+    } else if (o.status === 'payment_pending') {
+        html += `<a href="pay.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">查看付款确认</a>`;
         html += `<button onclick="doAction('cancel')" class="btn-danger px-6 py-3 rounded-xl text-sm font-bold transition flex-1">取消订单</button>`;
     } else if (o.status === 'paid' && isAgentDeployment) {
         html += `<a href="deployment-setup.html?order_id=${o.id}" class="btn-primary px-6 py-3 rounded-xl text-sm font-bold transition-all flex-1 text-center">进入部署向导</a>`;
@@ -326,10 +341,10 @@ function renderDeploymentSection(order) {
             <div class="rounded-2xl bg-cyan-400/5 border border-cyan-400/10 p-4 text-sm text-gray-300 leading-7">
                 ${canSetup
                     ? '下一步请进入部署向导，创建实例、配置品牌语气、上传知识库并发布机器人。'
-                    : '完成支付后即可进入部署向导，获取公开 API 服务。'}
+                    : (paymentMode === 'manual_review' ? '先提交付款确认并等待后台审核，确认收款后即可进入部署向导。' : '完成支付后即可进入部署向导，获取公开 API 服务。')}
             </div>
             <a href="${canSetup ? `deployment-setup.html?order_id=${order.id}` : `pay.html?order_id=${order.id}`}" class="inline-flex items-center justify-center px-4 py-3 rounded-xl border border-cyan-400/25 text-cyan-300 hover:bg-cyan-400/10 transition text-sm font-medium">
-                <span class="iconify mr-2" data-icon="${canSetup ? 'mdi:rocket-launch-outline' : 'mdi:credit-card-outline'}"></span>${canSetup ? '打开部署向导' : '先去支付'}
+                <span class="iconify mr-2" data-icon="${canSetup ? 'mdi:rocket-launch-outline' : 'mdi:credit-card-outline'}"></span>${canSetup ? '打开部署向导' : (paymentMode === 'manual_review' ? '提交付款确认' : '先去支付')}
             </a>
         </div>
     `;
@@ -486,7 +501,7 @@ function formatTime(iso) {
     return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-loadOrder();
+loadRuntimeConfig().then(loadOrder);
 </script>
 </body>
 </html>

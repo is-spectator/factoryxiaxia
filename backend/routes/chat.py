@@ -8,7 +8,7 @@ from extensions import db
 from models import ConversationMessage, ConversationSession, Deployment
 from services.audit_service import record_audit
 from services.deployment_service import (
-    get_public_deployment,
+    find_public_deployment,
     load_deployment_config,
     user_can_manage_deployment,
 )
@@ -16,6 +16,12 @@ from services.guardrails_service import inspect_inbound_message, sanitize_outbou
 from services.handoff_service import create_handoff_ticket
 from services.prompt_service import render_support_prompt
 from services.provider_service import get_chat_provider
+from services.public_api_service import (
+    build_public_request_context,
+    evaluate_public_access,
+    evaluate_public_quota,
+    evaluate_public_rate_limits,
+)
 from services.rag_service import search_deployment_knowledge
 from services.usage_meter_service import record_usage, summarize_deployment_usage
 from utils.auth import get_current_user
@@ -37,7 +43,7 @@ def _load_deployment_for_management(deployment_id):
     return user, deployment, None
 
 
-def _run_chat_turn(deployment, data, actor_user_id=None, access_mode="deployment_id"):
+def _run_chat_turn(deployment, data, actor_user_id=None, access_mode="deployment_id", access_details=None):
     if not deployment:
         return jsonify({"error": "部署实例不存在"}), 404
     if deployment.status != "active":
@@ -104,7 +110,13 @@ def _run_chat_turn(deployment, data, actor_user_id=None, access_mode="deployment
             "reason": guardrails["reason"] or "guardrails_blocked",
             "sources": [],
             "provider": "guardrails",
-            "system_prompt": system_prompt,
+            "provider_meta": {
+                "model": "guardrails",
+                "latency_ms": 0,
+                "usage": {},
+                "status": "blocked",
+                "fallback_used": False,
+            },
         }
     else:
         response = provider.generate(system_prompt, stored_user_message, snippets, deployment_config)
@@ -113,6 +125,22 @@ def _run_chat_turn(deployment, data, actor_user_id=None, access_mode="deployment
             response["risk_level"] = "high"
             response["reason"] = guardrails["reason"] or "guardrails_flagged"
 
+    provider_meta = response.get("provider_meta") or {}
+    assistant_source_refs = {
+        "sources": response["sources"],
+        "provider": response.get("provider"),
+        "response_reason": response.get("reason"),
+        "provider_meta": {
+            "model": provider_meta.get("model"),
+            "latency_ms": provider_meta.get("latency_ms"),
+            "usage": provider_meta.get("usage") or {},
+            "status": provider_meta.get("status"),
+            "fallback_used": bool(provider_meta.get("fallback_used")),
+            "request_id": provider_meta.get("request_id"),
+        },
+        "knowledge_hit_count": len(snippets),
+    }
+
     assistant_reply = sanitize_outbound_message(response["reply"], deployment_config)
     assistant_message = ConversationMessage(
         session_id=session.id,
@@ -120,11 +148,7 @@ def _run_chat_turn(deployment, data, actor_user_id=None, access_mode="deployment
         content=assistant_reply,
         confidence=response["confidence"],
         risk_level=response["risk_level"],
-        source_refs_json=json.dumps({
-            "sources": response["sources"],
-            "provider": response.get("provider"),
-            "system_prompt": response.get("system_prompt"),
-        }, ensure_ascii=False),
+        source_refs_json=json.dumps(assistant_source_refs, ensure_ascii=False),
     )
     db.session.add(assistant_message)
 
@@ -186,9 +210,13 @@ def _run_chat_turn(deployment, data, actor_user_id=None, access_mode="deployment
             "confidence": response["confidence"],
             "risk_level": response["risk_level"],
             "should_handoff": response["should_handoff"],
+            "response_reason": response.get("reason"),
+            "provider_meta": provider_meta,
+            "knowledge_hit_count": len(snippets),
             "pii_findings": guardrails["pii_findings"],
             "forbidden_matches": guardrails["forbidden_matches"],
             "sensitive_matches": guardrails["sensitive_matches"],
+            "access_details": access_details or {},
         },
     )
     db.session.commit()
@@ -208,12 +236,79 @@ def send_chat_message(deployment_id):
 
 @bp.route("/api/public/chat/<string:public_token>/message", methods=["POST"])
 def send_public_chat_message(public_token):
-    deployment = get_public_deployment(public_token)
-    if not deployment:
-        return jsonify({"error": "公开聊天入口不存在"}), 404
+    deployment = find_public_deployment(public_token)
+    access_context = build_public_request_context(request)
+    deployment_config = load_deployment_config(deployment) if deployment else {}
+    access_check = evaluate_public_access(deployment, deployment_config, access_context)
+    if not access_check["allowed"]:
+        if deployment:
+            record_audit(
+                action_type="chat.public_access_denied",
+                resource_type="deployment",
+                resource_id=deployment.id,
+                deployment_id=deployment.id,
+                summary=f"{deployment.deployment_name} 公开 API 访问被拒绝",
+                details={
+                    "reason": access_check["reason"],
+                    "access_mode": "public_token",
+                    "access_details": access_check["details"],
+                },
+                ip_address=access_context["ip_address"],
+            )
+            db.session.commit()
+        return jsonify({"error": access_check["error"]}), access_check["status_code"]
+
+    rate_limit_check = evaluate_public_rate_limits(deployment, access_context)
+    if not rate_limit_check["allowed"]:
+        record_audit(
+            action_type="chat.public_access_denied",
+            resource_type="deployment",
+            resource_id=deployment.id,
+            deployment_id=deployment.id,
+            summary=f"{deployment.deployment_name} 公开 API 触发限流",
+            details={
+                "reason": rate_limit_check["reason"],
+                "access_mode": "public_token",
+                "access_details": access_context,
+                "limit_details": rate_limit_check["details"],
+            },
+            ip_address=access_context["ip_address"],
+        )
+        db.session.commit()
+        response = jsonify({"error": rate_limit_check["error"]})
+        response.headers["Retry-After"] = str(rate_limit_check["details"]["retry_after"])
+        return response, rate_limit_check["status_code"]
+
+    quota_check = evaluate_public_quota(deployment)
+    if not quota_check["allowed"]:
+        record_audit(
+            action_type="chat.public_access_denied",
+            resource_type="deployment",
+            resource_id=deployment.id,
+            deployment_id=deployment.id,
+            summary=f"{deployment.deployment_name} 套餐额度耗尽",
+            details={
+                "reason": quota_check["reason"],
+                "access_mode": "public_token",
+                "access_details": access_context,
+                "quota_details": quota_check["details"],
+            },
+            ip_address=access_context["ip_address"],
+        )
+        db.session.commit()
+        return jsonify({"error": quota_check["error"]}), quota_check["status_code"]
 
     data = request.get_json(silent=True) or {}
-    return _run_chat_turn(deployment, data, access_mode="public_token")
+    return _run_chat_turn(
+        deployment,
+        data,
+        access_mode="public_token",
+        access_details={
+            **access_context,
+            "allowed_origins": access_check["details"]["allowed_origins"],
+            "quota_remaining": quota_check["details"].get("quota_remaining"),
+        },
+    )
 
 
 @bp.route("/api/chat/<int:deployment_id>/sessions", methods=["GET"])

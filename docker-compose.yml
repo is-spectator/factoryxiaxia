@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     image: mysql:8.0
@@ -7,13 +5,12 @@ services:
     restart: always
     environment:
       # ⚠️ 生产环境请通过 .env 文件覆盖以下默认值
-      MYSQL_ROOT_PASSWORD: root_secret_2026  # 务必修改
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_secret_2026}  # 务必修改
       MYSQL_DATABASE: ${DB_NAME:-xiaxia_factory}
       MYSQL_USER: ${DB_USER:-xiaxia}
       MYSQL_PASSWORD: ${DB_PASS:-xiaxia_secret_2026}  # 务必修改
     volumes:
       - db_data:/var/lib/mysql
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "3306:3306"
     healthcheck:
@@ -36,13 +33,35 @@ services:
       DB_PASS: ${DB_PASS:-xiaxia_secret_2026}
       DB_HOST: ${DB_HOST:-db}
       DB_NAME: ${DB_NAME:-xiaxia_factory}
+      APP_ENV: ${APP_ENV:-development}
       JWT_SECRET: ${JWT_SECRET:-xiaxia-jwt-secret-key-2026}  # 务必修改
-      FLASK_ENV: ${FLASK_ENV:-production}
+      AGENT_PROVIDER: ${AGENT_PROVIDER:-rules}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_MODEL: ${DASHSCOPE_MODEL:-qwen-max}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions}
+      DASHSCOPE_TEMPERATURE: ${DASHSCOPE_TEMPERATURE:-0.2}
+      DASHSCOPE_TOP_P: ${DASHSCOPE_TOP_P:-0.8}
+      DASHSCOPE_MAX_TOKENS: ${DASHSCOPE_MAX_TOKENS:-800}
+      DASHSCOPE_TIMEOUT_SECONDS: ${DASHSCOPE_TIMEOUT_SECONDS:-30}
+      DASHSCOPE_RETRY_ATTEMPTS: ${DASHSCOPE_RETRY_ATTEMPTS:-1}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:10088}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:10088,http://127.0.0.1:10088}
+      ADMIN_INIT_USERNAME: ${ADMIN_INIT_USERNAME:-admin}
+      ADMIN_INIT_EMAIL: ${ADMIN_INIT_EMAIL:-admin@xiaxia.factory}
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
+      FLASK_ENV: ${FLASK_ENV:-development}
       RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT:-60/minute}
       RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10/minute}
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      KONGKONG_RUNTIME_MODE: ${KONGKONG_RUNTIME_MODE:-mock}
+      KONGKONG_BASE_DIR: ${KONGKONG_BASE_DIR:-/tmp/factoryxiaxia/kongkong}
+      KONGKONG_DOCKER_NETWORK: ${KONGKONG_DOCKER_NETWORK:-xiaxia-platform}
+      KONGKONG_EXPOSE_DEBUG_PORTS: ${KONGKONG_EXPOSE_DEBUG_PORTS:-1}
     ports:
       - "5000:5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${KONGKONG_BASE_DIR:-/tmp/factoryxiaxia/kongkong}:${KONGKONG_BASE_DIR:-/tmp/factoryxiaxia/kongkong}
 
   frontend:
     build: ./frontend
@@ -51,7 +70,11 @@ services:
     depends_on:
       - backend
     ports:
-      - "0.0.0.0:10088:80"
+      - "0.0.0.0:${FRONTEND_PORT:-10088}:80"
 
 volumes:
   db_data:
+
+networks:
+  default:
+    name: ${KONGKONG_DOCKER_NETWORK:-xiaxia-platform}

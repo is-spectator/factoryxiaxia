@@ -1,9 +1,15 @@
 """系统路由：健康检查、API文档"""
 import datetime
+import os
 from flask import Blueprint, jsonify
 from extensions import db, limiter
+from services.provider_service import get_provider_capabilities
 
 bp = Blueprint("system", __name__)
+
+
+def get_payment_mode():
+    return "manual_review" if (os.environ.get("APP_ENV") or "").strip().lower() == "production" else "mock"
 
 
 @bp.route("/api/health", methods=["GET"])
@@ -17,6 +23,17 @@ def health():
         result["status"] = "degraded"
         result["database"] = f"error: {e}"
     return jsonify(result), 200 if result["status"] == "ok" else 503
+
+
+@bp.route("/api/runtime-config", methods=["GET"])
+@limiter.exempt
+def runtime_config():
+    provider_capabilities = get_provider_capabilities()
+    return jsonify({
+        "payment_mode": get_payment_mode(),
+        "app_env": (os.environ.get("APP_ENV") or "development").strip().lower(),
+        "provider": provider_capabilities,
+    }), 200
 
 
 @bp.route("/api/docs", methods=["GET"])
@@ -172,10 +189,19 @@ def api_docs():
             "/orders/{id}/pay": {
                 "post": {
                     "tags": ["支付"],
-                    "summary": "模拟支付",
+                    "summary": "开发环境快捷支付",
                     "security": [{"BearerAuth": []}],
                     "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}],
                     "responses": {"200": {"description": "支付成功"}},
+                }
+            },
+            "/orders/{id}/payment-review": {
+                "post": {
+                    "tags": ["支付"],
+                    "summary": "提交付款确认",
+                    "security": [{"BearerAuth": []}],
+                    "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "提交成功"}},
                 }
             },
             "/orders/{id}/activate": {

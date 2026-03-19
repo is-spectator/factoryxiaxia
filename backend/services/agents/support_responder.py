@@ -47,7 +47,7 @@ def generate_support_response(user_message, snippets, deployment_config=None):
     if not snippets:
         return {
             "reply": (
-                "这个问题我暂时没有足够的知识库依据来直接答复。"
+                "当前知识库没有命中与你问题直接相关的内容。"
                 "为了避免误导，我已经建议转人工继续处理。"
             ),
             "confidence": round(confidence, 3),
@@ -75,7 +75,7 @@ def generate_support_response(user_message, snippets, deployment_config=None):
         should_handoff = True
         reason = "low_confidence"
         risk_level = "medium"
-        closing = "当前命中信息还不够充分，建议转人工做进一步确认。"
+        closing = "当前知识库有部分相关信息，但命中还不够充分，建议转人工做进一步确认。"
 
     return {
         "reply": f"{lead}{snippets_text}。{closing}",

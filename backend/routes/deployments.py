@@ -19,13 +19,30 @@ from services.deployment_service import (
     load_deployment_config,
     normalize_deployment_config,
     publish_deployment,
+    rotate_public_token,
     user_can_manage_deployment,
+    validate_deployment_config,
 )
+from services.knowledge_quality_service import validate_upload_documents
+from services.kongkong_provision_service import provision_kongkong_instance
 from services.messages import send_message
 from utils.auth import get_current_user
 
 
 bp = Blueprint("deployments", __name__)
+
+
+def _load_manageable_deployment(deployment_id):
+    user = get_current_user()
+    if not user:
+        return None, None, (jsonify({"error": "请先登录"}), 401)
+
+    deployment = Deployment.query.get(deployment_id)
+    if not deployment:
+        return user, None, (jsonify({"error": "部署实例不存在"}), 404)
+    if not user_can_manage_deployment(user, deployment):
+        return user, None, (jsonify({"error": "无权操作该部署实例"}), 403)
+    return user, deployment, None
 
 
 def get_or_create_default_organization(user):
@@ -123,6 +140,9 @@ def create_deployment(order_id):
 
     existing = Deployment.query.filter_by(order_id=order.id).first()
     if existing:
+        if existing.worker and existing.worker.runtime_kind == "openclaw_managed" and not existing.kongkong_instance:
+            provision_kongkong_instance(existing)
+            db.session.commit()
         return jsonify({"message": "部署实例已存在", "deployment": existing.to_dict()}), 200
 
     worker = order.worker
@@ -141,6 +161,9 @@ def create_deployment(order_id):
 
     if not isinstance(config, dict):
         return jsonify({"error": "config 必须是对象"}), 400
+    config_error = validate_deployment_config(config)
+    if config_error:
+        return jsonify({"error": config_error}), 400
     config = normalize_deployment_config(config)
 
     if organization_id:
@@ -169,6 +192,10 @@ def create_deployment(order_id):
     db.session.add(deployment)
     db.session.flush()
 
+    kongkong_instance = None
+    if worker.runtime_kind == "openclaw_managed":
+        kongkong_instance = provision_kongkong_instance(deployment)
+
     if order.status == "paid":
         order.status = "active"
         order.activated_at = now
@@ -191,6 +218,8 @@ def create_deployment(order_id):
             "order_id": order.id,
             "organization_id": organization.id,
             "channel_type": channel_type,
+            "runtime_kind": worker.runtime_kind or "none",
+            "kongkong_status": kongkong_instance.status if kongkong_instance else None,
         },
     )
     db.session.commit()
@@ -199,20 +228,17 @@ def create_deployment(order_id):
 
 @bp.route("/api/deployments/<int:deployment_id>/config", methods=["PUT"])
 def update_deployment_config(deployment_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "请先登录"}), 401
-
-    deployment = Deployment.query.get(deployment_id)
-    if not deployment:
-        return jsonify({"error": "部署实例不存在"}), 404
-    if not user_can_manage_deployment(user, deployment):
-        return jsonify({"error": "无权操作该部署实例"}), 403
+    user, deployment, error = _load_manageable_deployment(deployment_id)
+    if error:
+        return error
 
     data = request.get_json(silent=True) or {}
     merged_config = load_deployment_config(deployment)
     if isinstance(data, dict):
         merged_config.update(data)
+    config_error = validate_deployment_config(merged_config)
+    if config_error:
+        return jsonify({"error": config_error}), 400
     config = normalize_deployment_config(merged_config, deployment=deployment)
     deployment.config_json = dump_deployment_config(config, deployment=deployment)
     record_audit(
@@ -228,10 +254,138 @@ def update_deployment_config(deployment_id):
             "forbidden_topics": config["forbidden_topics"],
             "sensitive_keywords": config["sensitive_keywords"],
             "pii_masking_enabled": config["pii_masking_enabled"],
+            "allowed_origins": config["allowed_origins"],
+            "public_access_enabled": config["public_access_enabled"],
         },
     )
     db.session.commit()
     return jsonify({"message": "配置已更新", "deployment": deployment.to_dict()}), 200
+
+
+@bp.route("/api/deployments/<int:deployment_id>/public-token/rotate", methods=["POST"])
+def rotate_deployment_public_token(deployment_id):
+    user, deployment, error = _load_manageable_deployment(deployment_id)
+    if error:
+        return error
+    if deployment.status not in ("active", "suspended"):
+        return jsonify({"error": "请先完成发布后再轮换公开 Token"}), 400
+
+    previous_token = deployment.public_token or ""
+    new_token = rotate_public_token(deployment)
+    record_audit(
+        action_type="deployment.public_token_rotated",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"轮换公开 Token：{deployment.deployment_name}",
+        details={
+            "previous_token_suffix": previous_token[-6:] if previous_token else "",
+            "new_token_suffix": new_token[-6:] if new_token else "",
+        },
+    )
+    db.session.commit()
+    return jsonify({"message": "公开 Token 已轮换", "deployment": deployment.to_dict()}), 200
+
+
+def _set_public_access_enabled(deployment, enabled):
+    config = load_deployment_config(deployment)
+    config["public_access_enabled"] = bool(enabled)
+    deployment.config_json = dump_deployment_config(config, deployment=deployment)
+    return config
+
+
+@bp.route("/api/deployments/<int:deployment_id>/public-token/disable", methods=["POST"])
+def disable_deployment_public_token(deployment_id):
+    user, deployment, error = _load_manageable_deployment(deployment_id)
+    if error:
+        return error
+
+    config = _set_public_access_enabled(deployment, False)
+    record_audit(
+        action_type="deployment.public_token_disabled",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"停用公开 Token：{deployment.deployment_name}",
+        details={"public_access_enabled": config["public_access_enabled"]},
+    )
+    db.session.commit()
+    return jsonify({"message": "公开 Token 已停用", "deployment": deployment.to_dict()}), 200
+
+
+@bp.route("/api/deployments/<int:deployment_id>/public-token/enable", methods=["POST"])
+def enable_deployment_public_token(deployment_id):
+    user, deployment, error = _load_manageable_deployment(deployment_id)
+    if error:
+        return error
+
+    config = _set_public_access_enabled(deployment, True)
+    record_audit(
+        action_type="deployment.public_token_enabled",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"启用公开 Token：{deployment.deployment_name}",
+        details={"public_access_enabled": config["public_access_enabled"]},
+    )
+    db.session.commit()
+    return jsonify({"message": "公开 Token 已启用", "deployment": deployment.to_dict()}), 200
+
+
+@bp.route("/api/deployments/<int:deployment_id>/suspend", methods=["POST"])
+def suspend_deployment(deployment_id):
+    user, deployment, error = _load_manageable_deployment(deployment_id)
+    if error:
+        return error
+    if deployment.status != "active":
+        return jsonify({"error": "只有运行中的机器人才能暂停"}), 400
+
+    deployment.status = "suspended"
+    deployment.suspended_at = datetime.datetime.utcnow()
+    send_message(
+        deployment.user_id,
+        "机器人已暂停",
+        f"机器人「{deployment.deployment_name}」已暂停公开访问。",
+        "system",
+        deployment.order_id,
+    )
+    record_audit(
+        action_type="deployment.suspended",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"暂停机器人 {deployment.deployment_name}",
+        details={"status": deployment.status},
+    )
+    db.session.commit()
+    return jsonify({"message": "机器人已暂停", "deployment": deployment.to_dict()}), 200
+
+
+@bp.route("/api/deployments/<int:deployment_id>/resume", methods=["POST"])
+def resume_deployment(deployment_id):
+    user, deployment, error = _load_manageable_deployment(deployment_id)
+    if error:
+        return error
+    if deployment.status != "suspended":
+        return jsonify({"error": "当前机器人不在暂停状态"}), 400
+
+    deployment.status = "active"
+    deployment.suspended_at = None
+    record_audit(
+        action_type="deployment.resumed",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        actor_user_id=user.id,
+        deployment_id=deployment.id,
+        summary=f"恢复机器人 {deployment.deployment_name}",
+        details={"status": deployment.status},
+    )
+    db.session.commit()
+    return jsonify({"message": "机器人已恢复运行", "deployment": deployment.to_dict()}), 200
 
 
 @bp.route("/api/deployments/<int:deployment_id>/audit-logs", methods=["GET"])
@@ -276,6 +430,8 @@ def upload_knowledge_base(deployment_id):
         return jsonify({"error": "部署实例不存在"}), 404
     if not user_can_manage_deployment(user, deployment):
         return jsonify({"error": "无权操作该部署实例"}), 403
+    if deployment.worker and deployment.worker.runtime_kind == "openclaw_managed":
+        return jsonify({"error": "空空实例不使用知识库发布流程，请直接进入 OpenClaw 工作台"}), 400
 
     data = request.get_json(silent=True) or {}
     knowledge_base_id = data.get("knowledge_base_id")
@@ -322,20 +478,19 @@ def upload_knowledge_base(deployment_id):
     if not isinstance(documents_payload, list) or not documents_payload:
         return jsonify({"error": "documents 必须是非空数组"}), 400
 
-    created_documents = []
-    for item in documents_payload:
-        title = (item.get("title") or "").strip()
-        content = (item.get("content") or "").strip()
-        if not title or not content:
-            return jsonify({"error": "每篇知识文档都需要 title 和 content"}), 400
+    normalized_documents, validation_error = validate_upload_documents(knowledge_base, documents_payload)
+    if validation_error:
+        return jsonify({"error": validation_error}), 400
 
+    created_documents = []
+    for item in normalized_documents:
         document = KnowledgeDocument(
             knowledge_base_id=knowledge_base.id,
-            title=title,
-            doc_type=(item.get("doc_type") or "faq").strip() or "faq",
-            source_name=(item.get("source_name") or "").strip(),
-            content=content,
-            char_count=len(content),
+            title=item["title"],
+            doc_type=item["doc_type"],
+            source_name=item["source_name"],
+            content=item["content"],
+            char_count=item["char_count"],
             status="draft",
         )
         db.session.add(document)
@@ -373,6 +528,8 @@ def publish_deployment_route(deployment_id):
         return jsonify({"error": "部署实例不存在"}), 404
     if not user_can_manage_deployment(user, deployment):
         return jsonify({"error": "无权操作该部署实例"}), 403
+    if deployment.worker and deployment.worker.runtime_kind == "openclaw_managed":
+        return jsonify({"error": "空空实例创建后会直接进入运行态，无需单独发布"}), 400
 
     try:
         knowledge_bases = publish_deployment(deployment)
@@ -396,6 +553,8 @@ def publish_deployment_route(deployment_id):
         details={
             "knowledge_base_count": len(knowledge_bases),
             "public_token": deployment.public_token,
+            "knowledge_version": deployment.knowledge_version,
+            "knowledge_last_published_at": deployment.knowledge_last_published_at.isoformat() if deployment.knowledge_last_published_at else None,
         },
     )
     db.session.commit()

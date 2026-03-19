@@ -82,6 +82,14 @@ const sessionStatusMap = {
     closed: '已关闭',
 };
 
+const handoffReasonMap = {
+    knowledge_not_found: '知识库未命中',
+    low_confidence: '知识命中不足',
+    sensitive_or_manual_handoff: '命中敏感问题',
+    guardrails_blocked: '触发安全规则',
+    guardrails_flagged: '安全规则提醒人工确认',
+};
+
 (function() {
     const userStr = localStorage.getItem('xiaxia_user');
     if (!token || !userStr) return;
@@ -150,9 +158,27 @@ function getStatusMeta(status) {
     return deploymentStatusMap[status] || { label: status || '未知', cls: 'status-badge-stopped' };
 }
 
+function getPublicAccessEnabled(deployment) {
+    return !deployment || !deployment.config || deployment.config.public_access_enabled !== false;
+}
+
+function getAllowedOrigins(deployment) {
+    return (deployment && deployment.config && Array.isArray(deployment.config.allowed_origins))
+        ? deployment.config.allowed_origins
+        : [];
+}
+
+function formatHandoffReason(reason) {
+    return handoffReasonMap[reason] || reason || '系统判定';
+}
+
 function buildEndpoint(deployment) {
     if (!deployment || deployment.status !== 'active' || !deployment.public_token) return '';
     return `${window.location.origin}/api/public/chat/${deployment.public_token}/message`;
+}
+
+function isKongKongDeployment(deployment) {
+    return !!deployment && (deployment.runtime_kind === 'openclaw_managed' || !!deployment.kongkong_instance);
 }
 
 async function fetchJson(url, options) {
@@ -310,8 +336,10 @@ function renderKnowledgeBases(detail) {
             <div class="flex flex-wrap gap-3 text-xs text-gray-400">
                 <span>文档总数 ${item.document_count}</span>
                 <span>已发布 ${item.published_document_count}</span>
+                <span>字符数 ${item.total_char_count || 0}</span>
                 <span>${item.published_at ? `发布时间 ${formatDate(item.published_at)}` : '尚未发布'}</span>
             </div>
+            ${(item.sample_titles || []).length ? `<p class="text-xs text-gray-400 mt-3 leading-6">示例文档: ${esc(item.sample_titles.join('、'))}</p>` : ''}
         </div>
     `).join('');
 }
@@ -349,7 +377,7 @@ function renderSessions() {
                             <p class="text-cyan-100 leading-7">${esc(latestAssistant.content)}</p>
                         </div>
                     ` : ''}
-                    ${session.needs_handoff ? `<p class="text-xs text-orange-300">转人工原因：${esc(session.handoff_reason || '系统判定')}</p>` : ''}
+                    ${session.needs_handoff ? `<p class="text-xs text-orange-300">转人工原因：${esc(formatHandoffReason(session.handoff_reason))}</p>` : ''}
                 </div>
             </div>
         `;
@@ -391,6 +419,50 @@ function renderTestPanel(detail) {
     `;
 }
 
+function renderKongKongPanel(detail) {
+    const instance = detail && detail.kongkong_instance;
+    if (!instance) {
+        return `
+            <div class="card p-6">
+                <h3 class="text-lg font-bold mb-5">空空工作台</h3>
+                <div class="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-gray-500">实例尚未创建，请先在部署页完成创建。</div>
+            </div>
+        `;
+    }
+    return `
+        <div class="card p-6">
+            <div class="flex items-center justify-between gap-4 mb-5">
+                <div>
+                    <h3 class="text-lg font-bold">空空工作台</h3>
+                    <p class="text-sm text-gray-400 mt-1">这是你专属的 OpenClaw 运行实例，默认接入 qwen-max。</p>
+                </div>
+                <span class="text-[11px] px-3 py-1 rounded-full border ${instance.status === 'running' ? 'status-badge-active' : 'status-badge-stopped'}">${esc(instance.status)}</span>
+            </div>
+            <div class="space-y-4 text-sm">
+                <div>
+                    <p class="text-xs text-gray-500 mb-2">实例入口</p>
+                    <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${instance.entry_url ? esc(instance.entry_url) : '待生成'}</div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">模型: ${esc(instance.model_name || 'qwen-max')}</div>
+                    <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">资源: ${(instance.cpu_limit || 1)} CPU / ${instance.memory_limit_mb || 2048}MB</div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">实例标识: ${esc(instance.instance_slug)}</div>
+                    <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">到期: ${formatDate(instance.expires_at)}</div>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <button onclick="openKongKongWorkspace()" class="btn-primary px-4 py-2 rounded-xl font-bold transition ${instance.status === 'running' ? '' : 'opacity-50 pointer-events-none'}">进入工作台</button>
+                    <button onclick="runKongKongAction('restart')" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">重启实例</button>
+                    ${instance.status === 'running'
+                        ? `<button onclick="runKongKongAction('suspend')" class="btn-secondary border border-orange-400/25 px-4 py-2 rounded-xl font-bold transition text-orange-200">暂停实例</button>`
+                        : `<button onclick="runKongKongAction('start')" class="btn-secondary border border-green-400/25 px-4 py-2 rounded-xl font-bold transition text-green-200">启动实例</button>`}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function renderSelectedPanel() {
     const detail = state.selectedDetail;
     if (!detail) {
@@ -399,6 +471,7 @@ function renderSelectedPanel() {
     const statusMeta = getStatusMeta(detail.status);
     const metrics = state.selectedMetrics || {};
     const endpoint = buildEndpoint(detail);
+    const kongkongMode = isKongKongDeployment(detail);
     return `
         <div class="space-y-6">
             <div class="card p-7">
@@ -409,7 +482,7 @@ function renderSelectedPanel() {
                             <span class="text-[11px] px-3 py-1 rounded-full border ${statusMeta.cls}">${statusMeta.label}</span>
                         </div>
                         <p class="text-gray-400 leading-7 max-w-3xl">
-                            ${esc(detail.worker_name || '官方机器人')} · ${esc(detail.organization_name || '默认团队')} · ${esc(detail.service_plan_name || '官方套餐')}
+                            ${esc(detail.worker_name || '官方机器人')} · ${esc(detail.organization_name || '默认团队')} · ${esc(detail.service_plan_name || '官方套餐')}${kongkongMode ? ' · OpenClaw 工作台交付' : ''}
                         </p>
                         <div class="flex flex-wrap gap-3 text-xs text-gray-500 mt-4">
                             <span>创建于 ${formatDate(detail.created_at)}</span>
@@ -421,9 +494,24 @@ function renderSelectedPanel() {
                         <a href="deployment-setup.html?deployment_id=${detail.id}" class="btn-primary px-5 py-3 rounded-2xl font-bold transition inline-flex items-center">
                             <span class="iconify mr-2" data-icon="mdi:tune-variant"></span>进入部署向导
                         </a>
+                        ${kongkongMode ? `
+                            <button onclick="openKongKongWorkspace()" class="btn-secondary border border-cyan-400/25 px-5 py-3 rounded-2xl font-bold transition inline-flex items-center text-cyan-200 ${detail.kongkong_instance && detail.kongkong_instance.status === 'running' ? '' : 'opacity-50 pointer-events-none'}">
+                                <span class="iconify mr-2" data-icon="mdi:open-in-new"></span>进入空空工作台
+                            </button>
+                        ` : ''}
                         <a href="order-detail.html?order_id=${detail.order_id}" class="btn-secondary border border-white/15 px-5 py-3 rounded-2xl font-bold transition inline-flex items-center">
                             <span class="iconify mr-2" data-icon="mdi:clipboard-list-outline"></span>查看订单
                         </a>
+                        ${detail.status === 'active' ? `
+                            <button onclick="changeDeploymentStatus('suspend')" class="btn-secondary border border-orange-400/25 px-5 py-3 rounded-2xl font-bold transition inline-flex items-center text-orange-200">
+                                <span class="iconify mr-2" data-icon="mdi:pause-circle-outline"></span>暂停机器人
+                            </button>
+                        ` : ''}
+                        ${detail.status === 'suspended' ? `
+                            <button onclick="changeDeploymentStatus('resume')" class="btn-secondary border border-green-400/25 px-5 py-3 rounded-2xl font-bold transition inline-flex items-center text-green-200">
+                                <span class="iconify mr-2" data-icon="mdi:play-circle-outline"></span>恢复机器人
+                            </button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -457,6 +545,18 @@ function renderSelectedPanel() {
                             </div>
                             <a href="deployment-setup.html?deployment_id=${detail.id}" class="text-sm text-cyan-300 hover:text-cyan-200 transition">去维护知识库</a>
                         </div>
+                        <div class="rounded-2xl border border-white/10 bg-black/20 p-4 mb-4 text-xs">
+                            <div class="grid grid-cols-2 gap-3 text-gray-300">
+                                <div>
+                                    <p class="text-gray-500 mb-1">线上知识版本</p>
+                                    <p class="font-mono text-cyan-200">${esc(detail.knowledge_version || '--')}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-500 mb-1">最后发布时间</p>
+                                    <p>${formatDate(detail.knowledge_last_published_at || (detail.knowledge_summary && detail.knowledge_summary.last_published_at))}</p>
+                                </div>
+                            </div>
+                        </div>
                         <div class="space-y-3">${renderKnowledgeBases(detail)}</div>
                     </div>
 
@@ -473,6 +573,7 @@ function renderSelectedPanel() {
                 </div>
 
                 <div class="space-y-6">
+                    ${kongkongMode ? renderKongKongPanel(detail) : `
                     <div class="card p-6">
                         <h3 class="text-lg font-bold mb-5">API 交付信息</h3>
                         <div class="space-y-4 text-sm">
@@ -481,15 +582,28 @@ function renderSelectedPanel() {
                                 <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${detail.status === 'active' && detail.public_token ? esc(detail.public_token) : '发布成功后生成'}</div>
                             </div>
                             <div>
+                                <p class="text-xs text-gray-500 mb-2">公开访问状态</p>
+                                <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 ${getPublicAccessEnabled(detail) ? 'text-green-300' : 'text-orange-300'}">
+                                    ${getPublicAccessEnabled(detail) ? '已启用' : '已停用'}
+                                </div>
+                            </div>
+                            <div>
                                 <p class="text-xs text-gray-500 mb-2">公开 Endpoint</p>
                                 <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${endpoint ? esc(endpoint) : '发布后可用'}</div>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 mb-2">浏览器白名单域名</p>
+                                <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-gray-300">${getAllowedOrigins(detail).length ? esc(getAllowedOrigins(detail).join('、')) : '尚未配置，浏览器挂件不能直接调用公开 API'}</div>
                             </div>
                             <div class="flex flex-wrap gap-3">
                                 ${detail.status === 'active' && detail.public_token ? `<button data-copy="${encodeURIComponent(detail.public_token)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">复制 Token</button>` : ''}
                                 ${endpoint ? `<button data-copy="${encodeURIComponent(endpoint)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">复制 Endpoint</button>` : ''}
+                                ${detail.status === 'active' || detail.status === 'suspended' ? `<button onclick="rotatePublicToken()" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">轮换 Token</button>` : ''}
+                                ${getPublicAccessEnabled(detail) ? `<button onclick="togglePublicToken(false)" class="btn-secondary border border-orange-400/20 px-4 py-2 rounded-xl font-bold transition text-orange-200">停用 Token</button>` : `<button onclick="togglePublicToken(true)" class="btn-secondary border border-green-400/20 px-4 py-2 rounded-xl font-bold transition text-green-200">启用 Token</button>`}
                             </div>
                         </div>
                     </div>
+                    `}
 
                     <div class="card p-6">
                         <h3 class="text-lg font-bold mb-5">当前配置</h3>
@@ -502,6 +616,16 @@ function renderSelectedPanel() {
                                 <p class="text-xs text-gray-500 mb-1">品牌语气</p>
                                 <p>${esc((detail.config && detail.config.brand_voice) || 'professional')}</p>
                             </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p class="text-xs text-gray-500 mb-1">LLM Provider</p>
+                                    <p>${esc((detail.config && detail.config.provider) || 'rules')}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-500 mb-1">生成模型</p>
+                                    <p>${esc((detail.config && detail.config.provider_model) || 'rules')}</p>
+                                </div>
+                            </div>
                             <div>
                                 <p class="text-xs text-gray-500 mb-1">禁答话题</p>
                                 <p class="text-gray-300">${(detail.config && detail.config.forbidden_topics && detail.config.forbidden_topics.length) ? esc(detail.config.forbidden_topics.join(', ')) : '暂无'}</p>
@@ -509,6 +633,17 @@ function renderSelectedPanel() {
                             <div>
                                 <p class="text-xs text-gray-500 mb-1">敏感关键词</p>
                                 <p class="text-gray-300">${(detail.config && detail.config.sensitive_keywords && detail.config.sensitive_keywords.length) ? esc(detail.config.sensitive_keywords.join(', ')) : '暂无'}</p>
+                            </div>
+                            <div class="grid grid-cols-3 gap-3 text-xs">
+                                <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                                    Temperature: ${detail.config && detail.config.provider_temperature != null ? esc(detail.config.provider_temperature) : '0.2'}
+                                </div>
+                                <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                                    Top P: ${detail.config && detail.config.provider_top_p != null ? esc(detail.config.provider_top_p) : '0.8'}
+                                </div>
+                                <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                                    Max Tokens: ${detail.config && detail.config.provider_max_tokens != null ? esc(detail.config.provider_max_tokens) : '800'}
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-3 text-xs">
                                 <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
@@ -518,10 +653,18 @@ function renderSelectedPanel() {
                                     命中隐私自动转人工: ${(detail.config && detail.config.handoff_on_pii) ? '开启' : '关闭'}
                                 </div>
                             </div>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                                    Timeout: ${detail.config && detail.config.provider_timeout_seconds != null ? esc(detail.config.provider_timeout_seconds) : '30'} 秒
+                                </div>
+                                <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                                    Retry: ${detail.config && detail.config.provider_retry_attempts != null ? esc(detail.config.provider_retry_attempts) : '1'} 次
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    ${renderTestPanel(detail)}
+                    ${kongkongMode ? '' : renderTestPanel(detail)}
                 </div>
             </div>
         </div>
@@ -618,6 +761,87 @@ async function refreshAll() {
     await init();
 }
 
+async function rotatePublicToken() {
+    if (!state.selectedId) return;
+    try {
+        await fetchJson(`/api/deployments/${state.selectedId}/public-token/rotate`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        await init();
+        toast('公开 Token 已轮换', true);
+    } catch (error) {
+        toast(error.message || '轮换 Token 失败', false);
+    }
+}
+
+async function togglePublicToken(enabled) {
+    if (!state.selectedId) return;
+    const action = enabled ? 'enable' : 'disable';
+    try {
+        await fetchJson(`/api/deployments/${state.selectedId}/public-token/${action}`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        await init();
+        toast(enabled ? '公开 Token 已启用' : '公开 Token 已停用', true);
+    } catch (error) {
+        toast(error.message || '更新 Token 状态失败', false);
+    }
+}
+
+async function changeDeploymentStatus(action) {
+    if (!state.selectedId) return;
+    try {
+        await fetchJson(`/api/deployments/${state.selectedId}/${action}`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        await init();
+        toast(action === 'suspend' ? '机器人已暂停' : '机器人已恢复运行', true);
+    } catch (error) {
+        toast(error.message || '更新机器人状态失败', false);
+    }
+}
+
+async function openKongKongWorkspace() {
+    const detail = state.selectedDetail;
+    const instance = detail && detail.kongkong_instance;
+    if (!instance) return;
+    try {
+        const data = await fetchJson(`/api/kongkong/instances/${instance.id}/launch-link`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        const launch = data.launch || {};
+        const message = launch.gateway_token
+            ? `入口链接已打开。若 OpenClaw 首次要求输入 Gateway Token，请使用：${launch.gateway_token}`
+            : '入口链接已打开';
+        if (launch.launch_url) {
+            window.open(launch.launch_url, '_blank', 'noopener');
+        }
+        toast(message, true);
+    } catch (error) {
+        toast(error.message || '打开空空工作台失败', false);
+    }
+}
+
+async function runKongKongAction(action) {
+    const detail = state.selectedDetail;
+    const instance = detail && detail.kongkong_instance;
+    if (!instance) return;
+    try {
+        await fetchJson(`/api/kongkong/instances/${instance.id}/${action}`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+        });
+        await init();
+        toast('空空实例状态已更新', true);
+    } catch (error) {
+        toast(error.message || '更新空空实例状态失败', false);
+    }
+}
+
 async function copyText(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -690,7 +914,8 @@ async function init() {
 
         const params = new URLSearchParams(window.location.search);
         const targetId = parseInt(params.get('deployment_id'), 10);
-        const initial = state.deployments.find(item => item.id === targetId) || state.deployments[0];
+        const preferredId = targetId || state.selectedId;
+        const initial = state.deployments.find(item => item.id === preferredId) || state.deployments[0];
         await loadSelectedBundle(initial.id);
         renderPage();
     } catch (error) {

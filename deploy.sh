@@ -22,27 +22,64 @@ if ! command -v docker compose &> /dev/null; then
     COMPOSE_CMD="docker-compose"
 fi
 
-echo ""
-echo "[1/3] 停止旧容器（如果存在）..."
-$COMPOSE_CMD down 2>/dev/null || true
+MODE="${1:-dev}"
+COMPOSE_FILES=(-f docker-compose.yml)
+FRONTEND_URL="http://localhost:${FRONTEND_PORT:-10088}"
+BACKEND_URL="http://localhost:5000"
+DATABASE_HINT="localhost:3306"
+
+if [ "$MODE" = "prod" ]; then
+    COMPOSE_FILES+=(-f docker-compose.prod.yml)
+    FRONTEND_URL="http://localhost:${FRONTEND_PORT:-80}"
+    BACKEND_URL="通过前端网关 ${FRONTEND_URL}/api"
+    DATABASE_HINT="不对公网暴露"
+fi
 
 echo ""
-echo "[2/3] 构建并启动所有服务..."
-$COMPOSE_CMD up --build -d
+echo "[1/5] 停止旧容器（如果存在）..."
+$COMPOSE_CMD "${COMPOSE_FILES[@]}" down 2>/dev/null || true
 
 echo ""
-echo "[3/3] 等待服务启动..."
-sleep 5
+echo "[2/5] 构建镜像..."
+$COMPOSE_CMD "${COMPOSE_FILES[@]}" build
+
+echo ""
+echo "[3/5] 启动数据库..."
+$COMPOSE_CMD "${COMPOSE_FILES[@]}" up -d db
+
+echo ""
+echo "[4/5] 等待数据库就绪..."
+for i in {1..30}; do
+    if $COMPOSE_CMD "${COMPOSE_FILES[@]}" exec -T db mysqladmin ping -h localhost --silent >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
+if ! $COMPOSE_CMD "${COMPOSE_FILES[@]}" exec -T db mysqladmin ping -h localhost --silent >/dev/null 2>&1; then
+    echo "[ERROR] 数据库未能在预期时间内启动"
+    exit 1
+fi
+
+echo ""
+echo "[5/5] 执行数据库迁移并启动应用..."
+$COMPOSE_CMD "${COMPOSE_FILES[@]}" run --rm backend python manage.py migrate
+$COMPOSE_CMD "${COMPOSE_FILES[@]}" up -d backend frontend
 
 echo ""
 echo "============================================"
 echo "  部署完成！"
 echo "============================================"
 echo ""
-echo "  前端地址:  http://localhost:10088"
-echo "  后端API:   http://localhost:5000"
-echo "  数据库:    localhost:3306"
+echo "  部署模式:  $MODE"
+echo "  前端地址:  $FRONTEND_URL"
+echo "  后端API:   $BACKEND_URL"
+echo "  数据库:    $DATABASE_HINT"
+if [ "$MODE" = "prod" ]; then
+    echo "  管理员初始化: 首次启动会读取 ADMIN_INIT_* 环境变量创建一次性管理员"
+    echo "  迁移策略: 已在启动前执行 python manage.py migrate"
+fi
 echo ""
-echo "  查看日志:  $COMPOSE_CMD logs -f"
-echo "  停止服务:  $COMPOSE_CMD down"
+echo "  查看日志:  $COMPOSE_CMD ${COMPOSE_FILES[*]} logs -f"
+echo "  停止服务:  $COMPOSE_CMD ${COMPOSE_FILES[*]} down"
 echo "============================================"

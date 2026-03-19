@@ -5,10 +5,12 @@ import jwt
 from flask import request
 from models import User
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "xiaxia-jwt-secret-key-2026")
+JWT_SECRET = (os.environ.get("JWT_SECRET") or "").strip()
 
 
 def create_token(user):
+    if not JWT_SECRET:
+        raise RuntimeError("JWT_SECRET 未配置")
     payload = {
         "user_id": user.id,
         "username": user.username,
@@ -19,6 +21,8 @@ def create_token(user):
 
 
 def verify_token(token):
+    if not JWT_SECRET:
+        return None
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:

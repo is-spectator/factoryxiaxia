@@ -70,13 +70,13 @@
 
         <!-- 支付方式 -->
         <div class="card p-8 mb-6">
-            <h2 class="text-sm font-bold mb-4 text-gray-400">选择支付方式</h2>
-            <div class="space-y-3">
+            <h2 id="payment-method-title" class="text-sm font-bold mb-4 text-gray-400">选择支付方式</h2>
+            <div id="payment-methods" class="space-y-3">
                 <div class="pay-method selected border border-white/10 rounded-xl p-4 flex items-center gap-4" data-method="mock" onclick="selectMethod(this)">
                     <span class="iconify text-2xl text-cyan-400" data-icon="mdi:test-tube"></span>
                     <div class="flex-grow">
-                        <p class="font-medium text-sm">模拟支付</p>
-                        <p class="text-[10px] text-gray-500">开发环境 - 立即到账</p>
+                        <p class="font-medium text-sm">开发环境快捷支付</p>
+                        <p class="text-[10px] text-gray-500">仅用于本地联调，立即到账</p>
                     </div>
                     <span class="iconify text-lg text-[#6A0DAD] check-icon" data-icon="mdi:check-circle"></span>
                 </div>
@@ -95,6 +95,20 @@
                         <p class="text-[10px] text-gray-500">即将上线</p>
                     </div>
                     <span class="iconify text-lg text-[#6A0DAD] check-icon hidden" data-icon="mdi:check-circle"></span>
+                </div>
+            </div>
+            <div id="payment-review-fields" class="hidden mt-5 space-y-4">
+                <div>
+                    <label class="text-xs text-gray-500 mb-2 block">付款人名称</label>
+                    <input id="payer-name" type="text" placeholder="例如：虾虾工厂采购部" class="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-2 block">打款流水号 / 备注（可选）</label>
+                    <input id="external-ref" type="text" placeholder="例如：BANK-20260319-001" class="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 focus:outline-none focus:border-cyan-400"/>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-2 block">付款说明</label>
+                    <textarea id="payment-note" rows="4" placeholder="请填写打款时间、付款账户尾号、联系人等，便于后台确认收款。" class="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 focus:outline-none focus:border-cyan-400 resize-none"></textarea>
                 </div>
             </div>
         </div>
@@ -131,6 +145,62 @@ if (!orderId) { toast('缺少订单ID', false); setTimeout(() => window.location
 
 let selectedMethod = 'mock';
 let order = null;
+let paymentMode = 'mock';
+
+function renderPaymentMode() {
+    const title = document.getElementById('payment-method-title');
+    const methods = document.getElementById('payment-methods');
+    const reviewFields = document.getElementById('payment-review-fields');
+    const payBtn = document.getElementById('pay-btn');
+
+    if (paymentMode === 'manual_review') {
+        title.textContent = '提交付款确认';
+        methods.innerHTML = `
+            <div class="pay-method selected border border-white/10 rounded-xl p-4 flex items-center gap-4" data-method="bank_transfer" onclick="selectMethod(this)">
+                <span class="iconify text-2xl text-cyan-400" data-icon="mdi:bank-transfer-out"></span>
+                <div class="flex-grow">
+                    <p class="font-medium text-sm">线下转账 / 商务确认</p>
+                    <p class="text-[10px] text-gray-500">提交付款信息后，等待后台确认收款</p>
+                </div>
+                <span class="iconify text-lg text-[#6A0DAD] check-icon" data-icon="mdi:check-circle"></span>
+            </div>
+        `;
+        selectedMethod = 'bank_transfer';
+        reviewFields.classList.remove('hidden');
+        payBtn.textContent = '提交付款确认';
+    } else {
+        title.textContent = '选择支付方式';
+        methods.innerHTML = `
+            <div class="pay-method selected border border-white/10 rounded-xl p-4 flex items-center gap-4" data-method="mock" onclick="selectMethod(this)">
+                <span class="iconify text-2xl text-cyan-400" data-icon="mdi:test-tube"></span>
+                <div class="flex-grow">
+                    <p class="font-medium text-sm">开发环境快捷支付</p>
+                    <p class="text-[10px] text-gray-500">仅用于本地联调，立即到账</p>
+                </div>
+                <span class="iconify text-lg text-[#6A0DAD] check-icon" data-icon="mdi:check-circle"></span>
+            </div>
+            <div class="pay-method border border-white/10 rounded-xl p-4 flex items-center gap-4 opacity-50" data-method="alipay" onclick="selectMethod(this)">
+                <span class="iconify text-2xl text-blue-500" data-icon="mdi:alpha-a-circle"></span>
+                <div class="flex-grow">
+                    <p class="font-medium text-sm">支付宝</p>
+                    <p class="text-[10px] text-gray-500">即将上线</p>
+                </div>
+                <span class="iconify text-lg text-[#6A0DAD] check-icon hidden" data-icon="mdi:check-circle"></span>
+            </div>
+            <div class="pay-method border border-white/10 rounded-xl p-4 flex items-center gap-4 opacity-50" data-method="wechat" onclick="selectMethod(this)">
+                <span class="iconify text-2xl text-green-500" data-icon="mdi:wechat"></span>
+                <div class="flex-grow">
+                    <p class="font-medium text-sm">微信支付</p>
+                    <p class="text-[10px] text-gray-500">即将上线</p>
+                </div>
+                <span class="iconify text-lg text-[#6A0DAD] check-icon hidden" data-icon="mdi:check-circle"></span>
+            </div>
+        `;
+        selectedMethod = 'mock';
+        reviewFields.classList.add('hidden');
+        payBtn.textContent = '确认支付';
+    }
+}
 
 function selectMethod(el) {
     document.querySelectorAll('.pay-method').forEach(m => {
@@ -143,10 +213,24 @@ function selectMethod(el) {
 }
 
 function getPostPayRedirect(orderData) {
+    if (paymentMode === 'manual_review') {
+        return `order-detail.html?order_id=${orderId}`;
+    }
     if (orderData && orderData.order_type === 'agent_deployment') {
         return `deployment-setup.html?order_id=${orderData.id}`;
     }
     return `order-detail.html?order_id=${orderId}`;
+}
+
+async function loadRuntimeConfig() {
+    try {
+        const res = await fetch('/api/runtime-config');
+        const data = await res.json();
+        paymentMode = data.payment_mode || 'mock';
+    } catch (error) {
+        paymentMode = 'mock';
+    }
+    renderPaymentMode();
 }
 
 async function loadOrder() {
@@ -156,8 +240,8 @@ async function loadOrder() {
     const d = await res.json();
     order = d.order;
 
-    if (order.status !== 'pending') {
-        toast('该订单不是待支付状态', false);
+    if (!['pending', 'payment_pending'].includes(order.status)) {
+        toast('该订单当前不可支付', false);
         window.location.href = 'orders.html';
         return;
     }
@@ -177,28 +261,46 @@ async function loadOrder() {
     document.getElementById('remark').textContent = order.remark || '无';
     document.getElementById('total-amount').textContent = '￥' + order.total_amount.toFixed(2);
 
+    if (paymentMode === 'manual_review' && order.status === 'payment_pending') {
+        document.getElementById('pay-btn').disabled = true;
+        document.getElementById('pay-btn').textContent = '已提交付款确认，等待审核';
+        document.getElementById('payment-note').value = order.remark || '';
+    }
+
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('content').classList.remove('hidden');
 }
 
 async function doPay() {
+    if (paymentMode === 'manual_review' && order && order.status === 'payment_pending') return;
     const btn = document.getElementById('pay-btn');
     btn.disabled = true;
-    btn.textContent = '支付处理中...';
+    btn.textContent = paymentMode === 'manual_review' ? '提交中...' : '支付处理中...';
     btn.classList.add('paying');
 
     try {
-        const res = await fetch(`/api/orders/${orderId}/pay`, {
+        const endpoint = paymentMode === 'manual_review'
+            ? `/api/orders/${orderId}/payment-review`
+            : `/api/orders/${orderId}/pay`;
+        const payload = paymentMode === 'manual_review'
+            ? {
+                method: selectedMethod,
+                payer_name: document.getElementById('payer-name').value.trim(),
+                external_ref: document.getElementById('external-ref').value.trim(),
+                note: document.getElementById('payment-note').value.trim(),
+            }
+            : { method: selectedMethod };
+        const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method: selectedMethod }),
+            body: JSON.stringify(payload),
         });
         if (res.status === 401) { localStorage.removeItem('xiaxia_token'); localStorage.removeItem('xiaxia_user'); window.location.href = 'login.html'; return; }
         const d = await res.json();
         if (!res.ok) {
             toast(d.error || '支付失败', false);
             btn.disabled = false;
-            btn.textContent = '确认支付';
+            btn.textContent = paymentMode === 'manual_review' ? '提交付款确认' : '确认支付';
             btn.classList.remove('paying');
             return;
         }
@@ -206,31 +308,41 @@ async function doPay() {
         const redirectUrl = getPostPayRedirect(d.order || order);
         const detailLink = document.getElementById('link-detail');
         detailLink.href = redirectUrl;
-        detailLink.textContent = (d.order || order).order_type === 'agent_deployment' ? '开始部署' : '查看订单';
+        detailLink.textContent = paymentMode === 'manual_review'
+            ? '查看订单'
+            : ((d.order || order).order_type === 'agent_deployment' ? '开始部署' : '查看订单');
         document.getElementById('success-modal').classList.remove('hidden');
-        let countdown = (d.order || order).order_type === 'agent_deployment' ? 3 : 5;
+        let countdown = paymentMode === 'manual_review' ? 5 : ((d.order || order).order_type === 'agent_deployment' ? 3 : 5);
         const countdownEl = document.getElementById('success-msg');
-        countdownEl.textContent = (d.order || order).order_type === 'agent_deployment'
-            ? `支付成功！${countdown}秒后自动进入部署向导...`
-            : `支付成功！${countdown}秒后自动跳转到订单详情...`;
+        if (paymentMode === 'manual_review') {
+            countdownEl.textContent = `付款确认已提交！${countdown}秒后自动跳转到订单详情...`;
+        } else {
+            countdownEl.textContent = (d.order || order).order_type === 'agent_deployment'
+                ? `支付成功！${countdown}秒后自动进入部署向导...`
+                : `支付成功！${countdown}秒后自动跳转到订单详情...`;
+        }
         const timer = setInterval(() => {
             countdown--;
             if (countdown <= 0) { clearInterval(timer); window.location.href = redirectUrl; }
             else {
-                countdownEl.textContent = (d.order || order).order_type === 'agent_deployment'
-                    ? `支付成功！${countdown}秒后自动进入部署向导...`
-                    : `支付成功！${countdown}秒后自动跳转到订单详情...`;
+                if (paymentMode === 'manual_review') {
+                    countdownEl.textContent = `付款确认已提交！${countdown}秒后自动跳转到订单详情...`;
+                } else {
+                    countdownEl.textContent = (d.order || order).order_type === 'agent_deployment'
+                        ? `支付成功！${countdown}秒后自动进入部署向导...`
+                        : `支付成功！${countdown}秒后自动跳转到订单详情...`;
+                }
             }
         }, 1000);
     } catch(e) {
         toast('网络错误，请重试', false);
         btn.disabled = false;
-        btn.textContent = '确认支付';
+        btn.textContent = paymentMode === 'manual_review' ? '提交付款确认' : '确认支付';
         btn.classList.remove('paying');
     }
 }
 
-loadOrder();
+loadRuntimeConfig().then(loadOrder);
 </script>
 </body>
 </html>

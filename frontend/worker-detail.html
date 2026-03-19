@@ -128,14 +128,25 @@
     const templateLabelMap = {
         support_responder: 'Support Responder',
         wechat_official_account_manager: 'WeChat Official Account Manager',
+        kongkong_openclaw_workspace: '空空 OpenClaw Workspace',
     };
     const agentScenarioMap = {
         support_responder: ['官网客服接待', '售后 FAQ', '复杂问题转人工', '公开 API 问答'],
         wechat_official_account_manager: ['公众号自动回复', '菜单架构设计', '内容规划', '私域转化策略'],
+        kongkong_openclaw_workspace: ['独立 OpenClaw 工作台', '隔离容器实例', 'Qwen 工作流调试', '托管运行环境'],
+    };
+    const launchStageMetaMap = {
+        launch: { label: '首发可购买', pillClass: 'official-pill', deliveryLabel: '首发开放购买' },
+        internal: { label: '内测中', pillClass: 'bg-amber-400/12 text-amber-300 border border-amber-400/25', deliveryLabel: '仅开放内测申请' },
+        public: { label: '官方上架', pillClass: 'official-pill', deliveryLabel: '公开上架' },
     };
 
     function isAgentService(worker) {
         return !!worker && worker.worker_type === 'agent_service';
+    }
+
+    function isKongKongRuntime(worker) {
+        return !!worker && worker.runtime_kind === 'openclaw_managed';
     }
 
     function formatMoney(value) {
@@ -146,7 +157,58 @@
         return (worker.agent_template && worker.agent_template.name) || templateLabelMap[worker.template_key] || '官方数字员工';
     }
 
+    function getLaunchStageMeta(worker) {
+        return launchStageMetaMap[(worker && worker.launch_stage) || 'public'] || launchStageMetaMap.public;
+    }
+
     function renderAgentCapabilityBlocks(worker) {
+        if (isKongKongRuntime(worker)) {
+            return `
+                <div class="glass-morphism p-8 rounded-3xl">
+                    <h3 class="text-lg font-bold mb-6 flex items-center">
+                        <span class="iconify mr-2 text-cyan-300" data-icon="mdi:cube-outline"></span>空空交付内容
+                    </h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                            <p class="text-xs text-gray-500 mb-1">交付方式</p>
+                            <p class="font-bold">独立实例</p>
+                        </div>
+                        <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                            <p class="text-xs text-gray-500 mb-1">运行时</p>
+                            <p class="font-bold">OpenClaw</p>
+                        </div>
+                        <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                            <p class="text-xs text-gray-500 mb-1">默认模型</p>
+                            <p class="font-bold">qwen-max</p>
+                        </div>
+                        <div class="bg-white/5 rounded-2xl p-4 border border-white/10">
+                            <p class="text-xs text-gray-500 mb-1">隔离级别</p>
+                            <p class="font-bold">每用户独占</p>
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="rounded-3xl bg-cyan-400/5 border border-cyan-400/10 p-5">
+                            <p class="text-sm font-bold mb-3">你会拿到什么</p>
+                            <div class="space-y-2 text-sm text-gray-300">
+                                <p>1. 一份独立的 OpenClaw 工作台实例</p>
+                                <p>2. 默认接入 DashScope 的 qwen-max</p>
+                                <p>3. 独立入口链接和实例级运行状态</p>
+                                <p>4. 可暂停、恢复、重启和销毁</p>
+                            </div>
+                        </div>
+                        <div class="rounded-3xl bg-white/5 border border-white/10 p-5">
+                            <p class="text-sm font-bold mb-3">交付流程</p>
+                            <div class="space-y-2 text-sm text-gray-300">
+                                <p>1. 选择月付或小时套餐</p>
+                                <p>2. 支付后创建专属实例</p>
+                                <p>3. 平台自动拉起 OpenClaw 工作台</p>
+                                <p>4. 在“我的机器人”里获取入口链接</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
         const tools = (worker.agent_template && worker.agent_template.default_tools) || [];
         const toolNames = {
             knowledge_base: '知识库',
@@ -189,9 +251,9 @@
                         <p class="text-sm font-bold mb-3">交付流程</p>
                         <div class="space-y-2 text-sm text-gray-300">
                             <p>1. 选择套餐并完成支付</p>
-                            <p>2. 配置品牌语气与禁答规则</p>
-                            <p>3. 上传知识文档并发布</p>
-                            <p>4. 发布上线后拿到 <code class="font-mono text-cyan-300">public_token</code> 开始对外提供服务</p>
+                            <p>2. ${worker.launch_stage === 'internal' ? '联系销售完成内测资格确认' : '配置品牌语气与禁答规则'}</p>
+                            <p>3. ${worker.launch_stage === 'internal' ? '审核通过后进入专属交付流程' : '上传知识文档并发布'}</p>
+                            <p>4. ${worker.launch_stage === 'internal' ? '内测通过后再开放正式 API 交付' : '发布上线后拿到 <code class="font-mono text-cyan-300">public_token</code> 开始对外提供服务'}</p>
                         </div>
                     </div>
                 </div>
@@ -240,20 +302,45 @@
     }
 
     function renderAgentPurchasePanel(worker, favoriteButtonHtml) {
+        const launchMeta = getLaunchStageMeta(worker);
+        if ((worker.launch_stage || 'public') === 'internal') {
+            return `
+                <div class="glass-morphism p-8 rounded-3xl sticky top-28">
+                    <p class="${launchMeta.pillClass} inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.2em] mb-4">
+                        <span class="iconify" data-icon="mdi:beaker-outline"></span>${launchMeta.label}
+                    </p>
+                    <h3 class="text-xl font-bold mb-3">当前仅开放内测申请</h3>
+                    <div class="mb-6">
+                        <p class="text-xs text-gray-500 mb-1">交付状态</p>
+                        <p class="text-4xl font-bold text-gradient">联系销售</p>
+                        <p class="text-xs text-gray-400 mt-2">这个官方数字员工仍在内测阶段，暂不开放自助购买和直接部署。</p>
+                    </div>
+                    <div class="bg-white/5 rounded-2xl p-4 mb-6 border border-white/10 space-y-3 text-sm text-gray-300 leading-7">
+                        <p>适合希望提前试用公众号运营机器人的企业客户。</p>
+                        <p>我们会基于你的场景、知识资料和渠道需求安排人工评估后开通。</p>
+                    </div>
+                    <a href="mailto:sales@xiaxia.factory?subject=${encodeURIComponent(worker.name + ' 内测申请')}" class="w-full bg-amber-400 hover:bg-amber-300 text-black py-4 rounded-xl font-bold text-lg transition flex items-center justify-center">
+                        <span class="iconify mr-2" data-icon="mdi:email-fast-outline"></span>联系销售申请内测
+                    </a>
+                    ${favoriteButtonHtml}
+                    <p class="text-[10px] text-gray-600 text-center mt-3">正式商业化上线前，不会进入自助购买和 API 交付流程。</p>
+                </div>
+            `;
+        }
         const plans = worker.service_plans || [];
         if (!selectedPlanId && plans.length > 0) {
             selectedPlanId = plans[0].id;
         }
         return `
             <div class="glass-morphism p-8 rounded-3xl sticky top-28">
-                <p class="official-pill inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.2em] mb-4">
-                    <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工
+                <p class="${launchMeta.pillClass} inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.2em] mb-4">
+                    <span class="iconify" data-icon="mdi:shield-star-outline"></span>${launchMeta.label}
                 </p>
                 <h3 class="text-xl font-bold mb-3">购买并部署</h3>
                 <div class="mb-6">
-                    <p class="text-xs text-gray-500 mb-1">官方套餐起</p>
+                    <p class="text-xs text-gray-500 mb-1">${isKongKongRuntime(worker) ? '官方定价' : '官方套餐起'}</p>
                     <p class="text-4xl font-bold text-gradient">${formatMoney(worker.hourly_rate)}</p>
-                    <p class="text-xs text-gray-500 mt-2">支付后进入部署向导，发布后即可对外提供 API 服务。</p>
+                    <p class="text-xs text-gray-500 mt-2">${isKongKongRuntime(worker) ? '支付后会实例化专属 OpenClaw 工作台，并在控制台里生成入口链接。' : '支付后进入部署向导，发布后即可对外提供 API 服务。'}</p>
                 </div>
                 <div class="space-y-3 mb-6">
                     ${(plans || []).map(plan => `
@@ -263,12 +350,13 @@
                                     <p class="font-bold">${esc(plan.name)}</p>
                                     <p class="text-xs text-gray-500 mt-1">${esc(plan.description || '官方托管套餐')}</p>
                                 </div>
-                                <p class="text-lg font-bold">${formatMoney(plan.price)}</p>
+                                <p class="text-lg font-bold">${formatMoney(plan.price)}${plan.billing_cycle === 'hourly' ? '/小时' : ''}</p>
                             </div>
                             <div class="flex flex-wrap gap-2 text-[11px] text-gray-300">
-                                <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.included_conversations} 对话/月</span>
+                                <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.billing_cycle === 'hourly' ? '按小时计费' : `${plan.included_conversations} 对话/月`}</span>
                                 <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.channel_limit} 渠道</span>
                                 <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${plan.seat_limit} 席位</span>
+                                ${plan.instance_type ? `<span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10">${esc(plan.instance_type)}</span>` : ''}
                             </div>
                         </button>
                     `).join('')}
@@ -292,10 +380,10 @@
                     </div>
                 </div>
                 <button onclick="goRent()" class="w-full bg-cyan-400 hover:bg-cyan-300 text-black py-4 rounded-xl font-bold text-lg transition flex items-center justify-center">
-                    <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>购买并开始部署
+                    <span class="iconify mr-2" data-icon="mdi:rocket-launch-outline"></span>${isKongKongRuntime(worker) ? '购买并创建空空实例' : '购买并开始部署'}
                 </button>
                 ${favoriteButtonHtml}
-                <p class="text-[10px] text-gray-600 text-center mt-3">购买后会自动进入部署向导，发布上线后会生成 <code class="font-mono text-cyan-300">public_token</code>。</p>
+                <p class="text-[10px] text-gray-600 text-center mt-3">${isKongKongRuntime(worker) ? '购买后会自动进入实例交付页，运行成功后可以直接进入 OpenClaw 工作台。' : '购买后会自动进入部署向导，发布上线后会生成 <code class="font-mono text-cyan-300">public_token</code>。'} </p>
             </div>
         `;
     }
@@ -367,8 +455,12 @@
         const metaEl = document.getElementById('agent-selected-meta');
         const descEl = document.getElementById('agent-selected-desc');
         if (nameEl) nameEl.textContent = selected.name;
-        if (durationEl) durationEl.textContent = `${durationDays} 天服务期`;
-        if (metaEl) metaEl.textContent = `${selected.channel_limit} 渠道 / ${selected.seat_limit} 席位`;
+        if (durationEl) durationEl.textContent = selected.billing_cycle === 'hourly'
+            ? `${selected.default_duration_hours || 1} 小时起`
+            : `${durationDays} 天服务期`;
+        if (metaEl) metaEl.textContent = isKongKongRuntime(workerData)
+            ? `${selected.channel_limit} 渠道 / ${selected.seat_limit} 席位 / ${(selected.cpu_limit || 1)} CPU`
+            : `${selected.channel_limit} 渠道 / ${selected.seat_limit} 席位`;
         if (descEl) descEl.textContent = selected.description || '官方托管套餐';
     }
 
@@ -408,8 +500,8 @@
                             </div>
                             <div class="flex-1">
                                 ${agentMode ? `
-                                    <p class="official-pill inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.2em] mb-4">
-                                        <span class="iconify" data-icon="mdi:shield-star-outline"></span>官方数字员工
+                                    <p class="${getLaunchStageMeta(w).pillClass} inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full uppercase tracking-[0.2em] mb-4">
+                                        <span class="iconify" data-icon="mdi:shield-star-outline"></span>${getLaunchStageMeta(w).label}
                                     </p>
                                 ` : ''}
                                 <div class="flex flex-wrap items-center gap-3 mb-2">
@@ -433,7 +525,7 @@
                                         </div>
                                         <div class="rounded-2xl bg-white/5 border border-white/10 p-4">
                                             <p class="text-xs text-gray-500 mb-1">交付方式</p>
-                                            <p class="font-bold">购买后部署 + 公开 API</p>
+                                            <p class="font-bold">${esc(getLaunchStageMeta(w).deliveryLabel)}</p>
                                         </div>
                                     </div>
                                     <div class="flex flex-wrap gap-3 mt-4 text-xs text-gray-400">
@@ -733,6 +825,10 @@
         const token = localStorage.getItem('xiaxia_token');
         if (!token) { window.location.href = 'login.html'; return; }
         if (isAgentService(workerData)) {
+            if ((workerData.launch_stage || 'public') === 'internal') {
+                window.location.href = `mailto:sales@xiaxia.factory?subject=${encodeURIComponent(workerData.name + ' 内测申请')}`;
+                return;
+            }
             const plans = workerData.service_plans || [];
             const selected = plans.find(plan => String(plan.id) === String(selectedPlanId)) || plans[0];
             if (!selected) return;
