@@ -166,6 +166,34 @@ def _run_command(args):
     return subprocess.run(args, capture_output=True, text=True, check=False)
 
 
+def _load_runtime_meta(instance):
+    raw = getattr(instance, "runtime_meta_json", "") or ""
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+
+def is_mock_runtime_record(instance):
+    runtime_meta = _load_runtime_meta(instance)
+    if runtime_meta.get("mode") == "mock":
+        return True
+    if str(getattr(instance, "container_name", "") or "").startswith("mock-"):
+        return True
+    return "/kongkong/mock/" in str(getattr(instance, "entry_url", "") or "")
+
+
+def _reset_instance_runtime_state(instance):
+    instance.container_name = ""
+    instance.container_id = ""
+    instance.host_port = None
+    instance.entry_url = ""
+    instance.error_message = ""
+    instance.runtime_meta_json = ""
+
+
 def _parse_host_port(port_output):
     raw = (port_output or "").strip()
     if ":" not in raw:
@@ -291,6 +319,8 @@ def provision_instance_runtime(instance):
 
     if not instance.container_name:
         instance.container_name = f"kongkong-{instance.instance_slug}"
+    elif str(instance.container_name).startswith("mock-"):
+        instance.container_name = f"kongkong-{instance.instance_slug}"
 
     _ensure_network_exists()
     existing_container = _find_existing_container(instance.container_name)
@@ -360,11 +390,13 @@ def start_instance_runtime(instance):
         instance.started_at = instance.started_at or datetime.datetime.utcnow()
         instance.stopped_at = None
         return instance
-    if not instance.container_name:
+    if not instance.container_name or is_mock_runtime_record(instance):
+        _reset_instance_runtime_state(instance)
         return provision_instance_runtime(instance)
     result = _run_command(["docker", "start", instance.container_name])
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "docker start 失败").strip()[:240])
+    _wait_for_container_ready(instance.container_name)
     instance.status = "running"
     instance.stopped_at = None
     instance.started_at = instance.started_at or datetime.datetime.utcnow()
@@ -391,11 +423,13 @@ def restart_instance_runtime(instance):
         instance.stopped_at = None
         instance.started_at = datetime.datetime.utcnow()
         return instance
-    if not instance.container_name:
+    if not instance.container_name or is_mock_runtime_record(instance):
+        _reset_instance_runtime_state(instance)
         return provision_instance_runtime(instance)
     result = _run_command(["docker", "restart", instance.container_name])
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "docker restart 失败").strip()[:240])
+    _wait_for_container_ready(instance.container_name)
     instance.status = "running"
     instance.stopped_at = None
     instance.started_at = datetime.datetime.utcnow()
@@ -416,12 +450,7 @@ def destroy_instance_runtime(instance):
 
 def build_launch_payload(instance):
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
-    runtime_meta = {}
-    if getattr(instance, "runtime_meta_json", ""):
-        try:
-            runtime_meta = json.loads(instance.runtime_meta_json)
-        except json.JSONDecodeError:
-            runtime_meta = {}
+    runtime_meta = _load_runtime_meta(instance)
     debug_launch_url = runtime_meta.get("debug_entry_url", "")
     return {
         "mode": get_runtime_mode(),

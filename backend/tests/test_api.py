@@ -854,6 +854,31 @@ class TestDeployments:
         assert start_res.status_code == 200
         assert json.loads(start_res.data)["instance"]["status"] == "running"
 
+    def test_kongkong_launch_link_rejects_mock_mode_outside_test(self, client, app_module, db, monkeypatch):
+        register(client, "kongmock", "kongmock@t.com")
+        token = login(client, "kongmock")
+        _, _, worker, monthly_plan, _ = seed_kongkong_worker(app_module, db)
+        order_res = client.post("/api/orders", headers=auth(token), json={
+            "worker_id": worker.id,
+            "service_plan_id": monthly_plan.id,
+        })
+        order_id = json.loads(order_res.data)["order"]["id"]
+        client.post(f"/api/orders/{order_id}/pay", headers=auth(token))
+
+        deploy_res = client.post(f"/api/orders/{order_id}/deployments", headers=auth(token), json={
+            "deployment_name": "空空 mock 工作台",
+            "channel_type": "workspace",
+        })
+        deployment = json.loads(deploy_res.data)["deployment"]
+        instance_id = deployment["kongkong_instance"]["id"]
+
+        monkeypatch.setenv("APP_ENV", "development")
+        monkeypatch.setenv("KONGKONG_RUNTIME_MODE", "mock")
+
+        launch_res = client.post(f"/api/kongkong/instances/{instance_id}/launch-link", headers=auth(token))
+        assert launch_res.status_code == 409
+        assert "mock 模式" in json.loads(launch_res.data)["error"]
+
     def test_pending_deployment_does_not_expose_public_token_or_public_api(self, client, app_module, db):
         token, deployment_id, _, _ = create_agent_deployment(client, app_module, db)
         deployment = db.session.get(app_module.Deployment, deployment_id)

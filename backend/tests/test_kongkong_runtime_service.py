@@ -102,3 +102,44 @@ def test_collect_runtime_config_errors_requires_kongkong_docker_envs(app_module)
     )
     assert "KONGKONG_BASE_DIR 缺失" in "\n".join(errors)
     assert "KONGKONG_DOCKER_NETWORK 缺失" in "\n".join(errors)
+
+
+def test_start_instance_runtime_reprovisions_mock_instance_in_docker_mode(monkeypatch, tmp_path):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("KONGKONG_RUNTIME_MODE", "docker")
+    monkeypatch.setenv("KONGKONG_BASE_DIR", str(tmp_path))
+    monkeypatch.setenv("KONGKONG_DOCKER_NETWORK", "xiaxia-platform")
+    monkeypatch.setenv("KONGKONG_EXPOSE_DEBUG_PORTS", "1")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.xiaxia.factory")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-dashscope-key")
+    monkeypatch.setattr(runtime_service.time, "sleep", lambda *_args, **_kwargs: None)
+
+    def fake_run(args):
+        if args[:4] == ["docker", "network", "inspect", "xiaxia-platform"]:
+            return DummyResult(stdout="[]")
+        if args[:4] == ["docker", "ps", "-a", "--filter"]:
+            return DummyResult(stdout="")
+        if args[:3] == ["docker", "run", "-d"]:
+            return DummyResult(stdout="container-456\n")
+        if args[:2] == ["docker", "inspect"] and len(args) == 3:
+            return DummyResult(stdout=json.dumps([{
+                "State": {"Status": "running", "Health": {"Status": "starting"}},
+                "RestartCount": 0,
+            }]))
+        if args[:3] == ["docker", "port", "kongkong-kongkong-1"]:
+            return DummyResult(stdout="127.0.0.1:40123\n")
+        raise AssertionError(f"Unexpected command: {args}")
+
+    monkeypatch.setattr(runtime_service, "_run_command", fake_run)
+
+    instance = _build_instance()
+    instance.container_name = "mock-kongkong-1"
+    instance.entry_url = "https://app.xiaxia.factory/kongkong/mock/kongkong-1/"
+    instance.runtime_meta_json = json.dumps({"mode": "mock"}, ensure_ascii=False)
+
+    runtime_service.start_instance_runtime(instance)
+
+    assert instance.container_name == "kongkong-kongkong-1"
+    assert instance.container_id == "container-456"
+    assert instance.entry_url == "https://app.xiaxia.factory/kongkong/kongkong-1/"
+    assert instance.host_port == 40123

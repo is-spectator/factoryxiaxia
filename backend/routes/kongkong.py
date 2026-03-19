@@ -1,4 +1,6 @@
 """空空 OpenClaw 实例管理路由。"""
+import os
+
 from flask import Blueprint, jsonify, request
 
 from extensions import db
@@ -11,6 +13,7 @@ from services.kongkong_provision_service import (
     start_kongkong_instance,
     stop_kongkong_instance,
 )
+from services.kongkong_runtime_service import get_runtime_mode, is_mock_runtime_record
 from services.messages import send_message
 from services.deployment_service import user_can_manage_deployment
 from utils.auth import get_current_user
@@ -139,6 +142,12 @@ def create_launch_link(instance_id):
         return error
     if instance.status != "running":
         return jsonify({"error": "空空实例尚未运行，无法生成入口链接"}), 400
+    if get_runtime_mode() != "docker" and (os.environ.get("APP_ENV") or "").strip().lower() != "test":
+        return jsonify({
+            "error": "当前环境仍处于空空 mock 模式，请设置 KONGKONG_RUNTIME_MODE=docker 并重建后端/前端容器后再试",
+        }), 409
+    if get_runtime_mode() == "docker" and is_mock_runtime_record(instance):
+        start_kongkong_instance(instance)
 
     payload = build_kongkong_launch_payload(instance)
     record_audit(
