@@ -598,7 +598,24 @@ class TestDeployments:
         assert data["template_key"] == "support_responder_test"
         assert data["status"] == "pending_setup"
         assert data["organization_name"] == "testuser 的团队"
-        assert data["public_token"]
+        assert data["public_token"] is None
+
+    def test_pending_deployment_does_not_expose_public_token_or_public_api(self, client, app_module, db):
+        token, deployment_id, _, _ = create_agent_deployment(client, app_module, db)
+        deployment = db.session.get(app_module.Deployment, deployment_id)
+        deployment.public_token = "legacy-pending-token"
+        db.session.commit()
+
+        detail_res = client.get(f"/api/deployments/{deployment_id}", headers=auth(token))
+        assert detail_res.status_code == 200
+        assert json.loads(detail_res.data)["deployment"]["public_token"] is None
+
+        public_res = client.post("/api/public/chat/legacy-pending-token/message", json={
+            "message": "现在可以用了吗？",
+            "visitor_name": "验收用户",
+        })
+        assert public_res.status_code == 404
+        assert json.loads(public_res.data)["error"] == "公开聊天入口不存在"
 
     def test_list_deployments_requires_auth(self, client):
         r = client.get("/api/deployments")

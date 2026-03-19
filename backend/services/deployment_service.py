@@ -94,7 +94,7 @@ def ensure_public_token(deployment):
 def get_public_deployment(public_token):
     if not public_token:
         return None
-    return Deployment.query.filter_by(public_token=public_token).first()
+    return Deployment.query.filter_by(public_token=public_token, status="active").first()
 
 
 def get_primary_knowledge_base(deployment_id):

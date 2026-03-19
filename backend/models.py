@@ -334,7 +334,7 @@ class Deployment(db.Model):
             "status": self.status,
             "deployment_name": self.deployment_name,
             "channel_type": self.channel_type,
-            "public_token": self.public_token,
+            "public_token": self.public_token if self.status == "active" else None,
             "config": config,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "suspended_at": self.suspended_at.isoformat() if self.suspended_at else None,

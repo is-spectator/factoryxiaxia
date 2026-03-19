@@ -16,7 +16,6 @@ from models import (
 from services.audit_service import record_audit
 from services.deployment_service import (
     dump_deployment_config,
-    ensure_public_token,
     load_deployment_config,
     normalize_deployment_config,
     publish_deployment,
@@ -166,7 +165,6 @@ def create_deployment(order_id):
         started_at=now,
         expires_at=now + datetime.timedelta(hours=order.duration_hours),
     )
-    ensure_public_token(deployment)
     deployment.config_json = dump_deployment_config(config, deployment=deployment)
     db.session.add(deployment)
     db.session.flush()

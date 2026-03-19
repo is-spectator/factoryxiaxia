@@ -357,6 +357,7 @@ def bootstrap_agent_foundation():
     logger.info("Bootstrapped official agent offerings")
 
     for deployment in Deployment.query.filter(
+        Deployment.status == "active",
         db.or_(Deployment.public_token.is_(None), Deployment.public_token == "")
     ).all():
         ensure_public_token(deployment)

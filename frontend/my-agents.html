@@ -151,7 +151,7 @@ function getStatusMeta(status) {
 }
 
 function buildEndpoint(deployment) {
-    if (!deployment || !deployment.public_token) return '';
+    if (!deployment || deployment.status !== 'active' || !deployment.public_token) return '';
     return `${window.location.origin}/api/public/chat/${deployment.public_token}/message`;
 }
 
@@ -478,14 +478,14 @@ function renderSelectedPanel() {
                         <div class="space-y-4 text-sm">
                             <div>
                                 <p class="text-xs text-gray-500 mb-2">公开 Token</p>
-                                <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${detail.public_token ? esc(detail.public_token) : '尚未生成'}</div>
+                                <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${detail.status === 'active' && detail.public_token ? esc(detail.public_token) : '发布成功后生成'}</div>
                             </div>
                             <div>
                                 <p class="text-xs text-gray-500 mb-2">公开 Endpoint</p>
                                 <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs break-all">${endpoint ? esc(endpoint) : '发布后可用'}</div>
                             </div>
                             <div class="flex flex-wrap gap-3">
-                                ${detail.public_token ? `<button data-copy="${encodeURIComponent(detail.public_token)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">复制 Token</button>` : ''}
+                                ${detail.status === 'active' && detail.public_token ? `<button data-copy="${encodeURIComponent(detail.public_token)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">复制 Token</button>` : ''}
                                 ${endpoint ? `<button data-copy="${encodeURIComponent(endpoint)}" onclick="copyFromEncoded(this)" class="btn-secondary border border-white/15 px-4 py-2 rounded-xl font-bold transition">复制 Endpoint</button>` : ''}
                             </div>
                         </div>
