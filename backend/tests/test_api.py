@@ -620,6 +620,8 @@ class TestDeployments:
     def test_list_deployments_requires_auth(self, client):
         r = client.get("/api/deployments")
         assert r.status_code == 401
+        assert "请先登录".encode("utf-8") in r.data
+        assert b"\\u8bf7\\u5148\\u767b\\u5f55" not in r.data
 
     def test_upload_knowledge_base_and_publish(self, client, app_module, db):
         token, deployment_id, _, _ = create_agent_deployment(client, app_module, db)

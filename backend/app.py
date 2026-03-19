@@ -56,6 +56,7 @@ logger = setup_logging()
 
 app = Flask(__name__)
 CORS(app)
+app.json.ensure_ascii = False
 
 DB_USER = os.environ.get("DB_USER", "xiaxia")
 DB_PASS = os.environ.get("DB_PASS", "xiaxia_secret_2026")
