@@ -102,7 +102,7 @@ def test_build_launch_payload_prefers_proxy_entry_url_over_debug_port(monkeypatc
 
     payload = runtime_service.build_launch_payload(instance)
 
-    assert payload["launch_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/"
+    assert payload["launch_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/#token=gateway-token-1"
     assert payload["entry_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/"
     assert payload["debug_launch_url"] == "https://app.xiaxia.factory:39123/"
 

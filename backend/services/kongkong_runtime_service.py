@@ -452,9 +452,12 @@ def build_launch_payload(instance):
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
     runtime_meta = _load_runtime_meta(instance)
     debug_launch_url = runtime_meta.get("debug_entry_url", "")
+    launch_url = instance.entry_url or debug_launch_url
+    if get_runtime_mode() == "docker" and instance.entry_url and instance.gateway_token:
+        launch_url = f"{instance.entry_url}#token={urllib.parse.quote(instance.gateway_token, safe='')}"
     return {
         "mode": get_runtime_mode(),
-        "launch_url": instance.entry_url or debug_launch_url,
+        "launch_url": launch_url,
         "entry_url": instance.entry_url,
         "debug_launch_url": debug_launch_url,
         "gateway_token": instance.gateway_token,
