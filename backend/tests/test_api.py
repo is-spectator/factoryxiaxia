@@ -1,6 +1,7 @@
 """Core API test suite for 虾虾工厂."""
 import json
 import pytest
+from routes import kongkong as kongkong_routes
 
 
 # ---------- helpers ----------
@@ -878,6 +879,33 @@ class TestDeployments:
         launch_res = client.post(f"/api/kongkong/instances/{instance_id}/launch-link", headers=auth(token))
         assert launch_res.status_code == 409
         assert "mock 模式" in json.loads(launch_res.data)["error"]
+
+    def test_kongkong_workspace_bootstrap_by_slug_returns_gateway_token(self, client, app_module, db, monkeypatch):
+        register(client, "kongslug", "kongslug@t.com")
+        token = login(client, "kongslug")
+        _, _, worker, monthly_plan, _ = seed_kongkong_worker(app_module, db)
+        order_res = client.post("/api/orders", headers=auth(token), json={
+            "worker_id": worker.id,
+            "service_plan_id": monthly_plan.id,
+        })
+        order_id = json.loads(order_res.data)["order"]["id"]
+        client.post(f"/api/orders/{order_id}/pay", headers=auth(token))
+
+        deploy_res = client.post(f"/api/orders/{order_id}/deployments", headers=auth(token), json={
+            "deployment_name": "空空工作台",
+            "channel_type": "workspace",
+        })
+        deployment = json.loads(deploy_res.data)["deployment"]
+        instance_slug = deployment["kongkong_instance"]["instance_slug"]
+
+        monkeypatch.setattr(kongkong_routes, "get_runtime_mode", lambda: "docker")
+        monkeypatch.setattr(kongkong_routes, "reconcile_instance_runtime", lambda *_args, **_kwargs: False)
+        bootstrap_res = client.get(f"/api/kongkong/workspaces/{instance_slug}/bootstrap", headers=auth(token))
+        assert bootstrap_res.status_code == 200
+        workspace = json.loads(bootstrap_res.data)["workspace"]
+        assert workspace["instance_slug"] == instance_slug
+        assert workspace["gateway_token"]
+        assert workspace["launch_url"]
 
     def test_pending_deployment_does_not_expose_public_token_or_public_api(self, client, app_module, db):
         token, deployment_id, _, _ = create_agent_deployment(client, app_module, db)

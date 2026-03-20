@@ -27,42 +27,83 @@
                 });
             }
 
-            const params = new URLSearchParams(window.location.search);
-            const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
-            const hashParams = new URLSearchParams(hash);
-            const slug = (params.get('slug') || '').trim();
-            const token = (hashParams.get('token') || '').trim();
-
-            if (!slug || !token) {
-                fail('入口参数缺失，无法自动进入空空工作台。请返回平台重新点击“进入空空工作台”。');
-                return;
-            }
-
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const gatewayUrl = wsProtocol + '//' + window.location.host + '/kongkong/' + encodeURIComponent(slug);
-            const storageKey = 'openclaw.control.token.v1:' + normalizeGatewayUrl(gatewayUrl);
-
-            try {
-                window.sessionStorage.removeItem('openclaw.control.token.v1');
-                window.sessionStorage.setItem(storageKey, token);
-
-                const settingsKey = 'openclaw.control.settings.v1';
-                let settings = {};
-                try {
-                    settings = JSON.parse(window.localStorage.getItem(settingsKey) || '{}') || {};
-                } catch (_error) {
-                    settings = {};
+            async function fetchBootstrapToken(slug) {
+                const authToken = (window.localStorage.getItem('xiaxia_token') || '').trim();
+                if (!authToken) {
+                    throw new Error('请先在平台登录后，再重新进入空空工作台。');
                 }
-                settings.gatewayUrl = gatewayUrl;
-                if (!settings.sessionKey) settings.sessionKey = 'main';
-                if (!settings.lastActiveSessionKey) settings.lastActiveSessionKey = settings.sessionKey;
-                window.localStorage.setItem(settingsKey, JSON.stringify(settings));
-            } catch (_error) {
-                fail('浏览器未能写入空空工作台的临时凭证，请检查是否禁用了站点存储。');
-                return;
+                const response = await window.fetch('/api/kongkong/workspaces/' + encodeURIComponent(slug) + '/bootstrap', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer ' + authToken
+                    }
+                });
+                let payload = {};
+                try {
+                    payload = await response.json();
+                } catch (_error) {
+                    payload = {};
+                }
+                if (!response.ok) {
+                    throw new Error((payload && payload.error) || '工作台初始化失败，请稍后重试。');
+                }
+                const workspace = payload.workspace || {};
+                const value = String(workspace.gateway_token || '').trim();
+                if (!value) {
+                    throw new Error('工作台初始化成功，但未拿到访问凭证。');
+                }
+                return value;
             }
 
-            window.location.replace('/kongkong/' + encodeURIComponent(slug) + '/');
+            async function bootstrap() {
+                const params = new URLSearchParams(window.location.search);
+                const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+                const hashParams = new URLSearchParams(hash);
+                const slug = (params.get('slug') || '').trim();
+
+                if (!slug) {
+                    fail('入口参数缺失，无法自动进入空空工作台。请返回平台重新点击“进入空空工作台”。');
+                    return;
+                }
+
+                let token = (hashParams.get('token') || '').trim();
+                if (!token) {
+                    try {
+                        token = await fetchBootstrapToken(slug);
+                    } catch (error) {
+                        fail(error && error.message ? error.message : '工作台初始化失败，请稍后重试。');
+                        return;
+                    }
+                }
+
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const gatewayUrl = wsProtocol + '//' + window.location.host + '/kongkong/' + encodeURIComponent(slug);
+                const storageKey = 'openclaw.control.token.v1:' + normalizeGatewayUrl(gatewayUrl);
+
+                try {
+                    window.sessionStorage.removeItem('openclaw.control.token.v1');
+                    window.sessionStorage.setItem(storageKey, token);
+
+                    const settingsKey = 'openclaw.control.settings.v1';
+                    let settings = {};
+                    try {
+                        settings = JSON.parse(window.localStorage.getItem(settingsKey) || '{}') || {};
+                    } catch (_error) {
+                        settings = {};
+                    }
+                    settings.gatewayUrl = gatewayUrl;
+                    if (!settings.sessionKey) settings.sessionKey = 'main';
+                    if (!settings.lastActiveSessionKey) settings.lastActiveSessionKey = settings.sessionKey;
+                    window.localStorage.setItem(settingsKey, JSON.stringify(settings));
+                } catch (_error) {
+                    fail('浏览器未能写入空空工作台的临时凭证，请检查是否禁用了站点存储。');
+                    return;
+                }
+
+                window.location.replace('/kongkong/' + encodeURIComponent(slug) + '/?gateway_bootstrapped=1');
+            }
+
+            bootstrap();
         })();
     </script>
     <style>

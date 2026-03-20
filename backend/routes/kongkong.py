@@ -41,6 +41,21 @@ def _load_manageable_instance(instance_id):
     return user, instance, None
 
 
+def _load_manageable_instance_by_slug(instance_slug):
+    user = get_current_user()
+    if not user:
+        return None, None, (jsonify({"error": "请先登录"}), 401)
+
+    instance = KongKongInstance.query.filter_by(instance_slug=instance_slug).first()
+    if not instance:
+        return user, None, (jsonify({"error": "空空实例不存在"}), 404)
+
+    deployment = instance.deployment
+    if not deployment or not user_can_manage_deployment(user, deployment):
+        return user, None, (jsonify({"error": "无权操作该空空实例"}), 403)
+    return user, instance, None
+
+
 @bp.route("/api/kongkong/instances", methods=["GET"])
 def list_kongkong_instances():
     user = get_current_user()
@@ -167,6 +182,38 @@ def create_launch_link(instance_id):
     )
     db.session.commit()
     return jsonify({"launch": payload, "instance": instance.to_dict()}), 200
+
+
+@bp.route("/api/kongkong/workspaces/<string:instance_slug>/bootstrap", methods=["GET"])
+def bootstrap_workspace_by_slug(instance_slug):
+    user, instance, error = _load_manageable_instance_by_slug(instance_slug)
+    if error:
+        return error
+    if instance.status != "running":
+        return jsonify({"error": "空空实例尚未运行，无法初始化工作台"}), 400
+    if get_runtime_mode() != "docker":
+        return jsonify({"error": "当前环境未启用 Docker 交付模式"}), 409
+
+    reconcile_instance_runtime(instance, restart_if_running=True)
+    payload = build_kongkong_launch_payload(instance)
+    record_audit(
+        action_type="kongkong.workspace_bootstrap",
+        resource_type="kongkong_instance",
+        resource_id=instance.id,
+        actor_user_id=user.id if user else None,
+        deployment_id=instance.deployment_id,
+        summary=f"初始化空空工作台：{instance.instance_slug}",
+        details={"entry_url": payload["entry_url"]},
+    )
+    db.session.commit()
+    return jsonify({
+        "workspace": {
+            "instance_slug": instance.instance_slug,
+            "gateway_token": payload["gateway_token"],
+            "entry_url": payload["entry_url"],
+            "launch_url": payload["launch_url"],
+        }
+    }), 200
 
 
 @bp.route("/api/admin/kongkong/instances", methods=["GET"])
