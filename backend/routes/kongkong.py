@@ -13,7 +13,11 @@ from services.kongkong_provision_service import (
     start_kongkong_instance,
     stop_kongkong_instance,
 )
-from services.kongkong_runtime_service import get_runtime_mode, is_mock_runtime_record
+from services.kongkong_runtime_service import (
+    get_runtime_mode,
+    is_mock_runtime_record,
+    reconcile_instance_runtime,
+)
 from services.messages import send_message
 from services.deployment_service import user_can_manage_deployment
 from utils.auth import get_current_user
@@ -148,6 +152,8 @@ def create_launch_link(instance_id):
         }), 409
     if get_runtime_mode() == "docker" and is_mock_runtime_record(instance):
         start_kongkong_instance(instance)
+    if get_runtime_mode() == "docker":
+        reconcile_instance_runtime(instance, restart_if_running=True)
 
     payload = build_kongkong_launch_payload(instance)
     record_audit(

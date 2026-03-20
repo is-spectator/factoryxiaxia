@@ -114,6 +114,9 @@ def render_openclaw_config(instance):
     provider_name = instance.model_provider or "dashscope"
     control_ui = {
         "allowedOrigins": [get_public_origin()],
+        # 空空通过平台代理交付，浏览器侧没有稳定设备身份链路；
+        # 这里改为仅依赖 gateway token，避免用户再做 OpenClaw pairing。
+        "dangerouslyDisableDeviceAuth": True,
     }
     if should_expose_debug_ports():
         control_ui["dangerouslyAllowHostHeaderOriginFallback"] = True
@@ -160,6 +163,40 @@ def prepare_instance_files(instance):
     instance.config_path = str(paths["config_file"])
     instance.logs_path = str(paths["logs_dir"])
     return paths
+
+
+def _load_existing_config_payload(config_file):
+    if not config_file.exists():
+        return None
+    try:
+        return json.loads(config_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def instance_runtime_config_needs_sync(instance):
+    if not is_runtime_enabled() or is_mock_runtime_record(instance):
+        return False
+    paths = build_runtime_paths(instance)
+    existing_payload = _load_existing_config_payload(paths["config_file"])
+    desired_payload = render_openclaw_config(instance)
+    if existing_payload != desired_payload:
+        return True
+    if (instance.entry_url or "") != _build_proxy_entry_url(instance):
+        return True
+    if not (instance.workspace_path and instance.config_path and instance.logs_path):
+        return True
+    return False
+
+
+def reconcile_instance_runtime(instance, restart_if_running=False):
+    if not instance_runtime_config_needs_sync(instance):
+        return False
+    prepare_instance_files(instance)
+    instance.entry_url = _build_proxy_entry_url(instance)
+    if restart_if_running and instance.container_name and _inspect_container_status(instance.container_name) == "running":
+        restart_instance_runtime(instance)
+    return True
 
 
 def _run_command(args):

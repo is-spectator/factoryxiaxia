@@ -81,6 +81,8 @@ def test_provision_instance_runtime_docker_uses_proxy_entry_url_and_debug_port(m
     assert meta["network"] == "xiaxia-platform"
     assert meta["proxy_entry_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/"
     assert meta["debug_entry_url"] == "https://app.xiaxia.factory:39123/"
+    config_payload = json.loads((tmp_path / "kongkong-1" / "config" / "openclaw.json").read_text(encoding="utf-8"))
+    assert config_payload["gateway"]["controlUi"]["dangerouslyDisableDeviceAuth"] is True
 
     run_command = next(args for args in commands if args[:3] == ["docker", "run", "-d"])
     assert "--network" in run_command
@@ -162,3 +164,53 @@ def test_start_instance_runtime_reprovisions_mock_instance_in_docker_mode(monkey
     assert instance.container_id == "container-456"
     assert instance.entry_url == "https://app.xiaxia.factory/kongkong/kongkong-1/"
     assert instance.host_port == 40123
+
+
+def test_instance_runtime_config_needs_sync_when_device_auth_flag_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("KONGKONG_RUNTIME_MODE", "docker")
+    monkeypatch.setenv("KONGKONG_BASE_DIR", str(tmp_path))
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.xiaxia.factory")
+
+    instance = _build_instance()
+    instance.entry_url = "https://app.xiaxia.factory/kongkong/kongkong-1/"
+    runtime_paths = runtime_service.prepare_instance_files(instance)
+
+    legacy_payload = json.loads(runtime_paths["config_file"].read_text(encoding="utf-8"))
+    legacy_payload["gateway"]["controlUi"].pop("dangerouslyDisableDeviceAuth", None)
+    runtime_paths["config_file"].write_text(json.dumps(legacy_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    assert runtime_service.instance_runtime_config_needs_sync(instance) is True
+
+
+def test_reconcile_instance_runtime_restarts_running_container_when_config_drifts(monkeypatch, tmp_path):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("KONGKONG_RUNTIME_MODE", "docker")
+    monkeypatch.setenv("KONGKONG_BASE_DIR", str(tmp_path))
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.xiaxia.factory")
+
+    instance = _build_instance()
+    instance.container_name = "kongkong-kongkong-1"
+    instance.entry_url = "https://app.xiaxia.factory/kongkong/kongkong-1/"
+    runtime_paths = runtime_service.prepare_instance_files(instance)
+
+    legacy_payload = json.loads(runtime_paths["config_file"].read_text(encoding="utf-8"))
+    legacy_payload["gateway"]["controlUi"].pop("dangerouslyDisableDeviceAuth", None)
+    runtime_paths["config_file"].write_text(json.dumps(legacy_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    restarted = {"called": False}
+
+    def fake_restart(target):
+        restarted["called"] = True
+        target.status = "running"
+        return target
+
+    monkeypatch.setattr(runtime_service, "_inspect_container_status", lambda _name: "running")
+    monkeypatch.setattr(runtime_service, "restart_instance_runtime", fake_restart)
+
+    changed = runtime_service.reconcile_instance_runtime(instance, restart_if_running=True)
+
+    assert changed is True
+    assert restarted["called"] is True
+    updated_payload = json.loads(runtime_paths["config_file"].read_text(encoding="utf-8"))
+    assert updated_payload["gateway"]["controlUi"]["dangerouslyDisableDeviceAuth"] is True
