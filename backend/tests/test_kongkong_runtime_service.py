@@ -89,6 +89,24 @@ def test_provision_instance_runtime_docker_uses_proxy_entry_url_and_debug_port(m
     assert "127.0.0.1::18789" in run_command
 
 
+def test_build_launch_payload_prefers_proxy_entry_url_over_debug_port(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("KONGKONG_RUNTIME_MODE", "docker")
+
+    instance = _build_instance()
+    instance.entry_url = "https://app.xiaxia.factory/kongkong/kongkong-1/"
+    instance.runtime_meta_json = json.dumps({
+        "mode": "docker",
+        "debug_entry_url": "https://app.xiaxia.factory:39123/",
+    }, ensure_ascii=False)
+
+    payload = runtime_service.build_launch_payload(instance)
+
+    assert payload["launch_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/"
+    assert payload["entry_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/"
+    assert payload["debug_launch_url"] == "https://app.xiaxia.factory:39123/"
+
+
 def test_collect_runtime_config_errors_requires_kongkong_docker_envs(app_module):
     errors = app_module.collect_runtime_config_errors(
         app_env="production",

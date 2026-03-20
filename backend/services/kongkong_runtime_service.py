@@ -454,7 +454,7 @@ def build_launch_payload(instance):
     debug_launch_url = runtime_meta.get("debug_entry_url", "")
     return {
         "mode": get_runtime_mode(),
-        "launch_url": debug_launch_url or instance.entry_url,
+        "launch_url": instance.entry_url or debug_launch_url,
         "entry_url": instance.entry_url,
         "debug_launch_url": debug_launch_url,
         "gateway_token": instance.gateway_token,
