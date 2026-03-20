@@ -217,6 +217,13 @@ def _build_proxy_entry_url(instance):
     return f"{get_public_base_url().rstrip('/')}{get_proxy_path_prefix()}/{instance.instance_slug}/"
 
 
+def _build_launch_bootstrap_url(instance):
+    base = get_public_base_url().rstrip("/")
+    slug = urllib.parse.quote(instance.instance_slug, safe="")
+    token = urllib.parse.quote(instance.gateway_token or "", safe="")
+    return f"{base}/kongkong-launch.html?slug={slug}#token={token}"
+
+
 def _ensure_network_exists():
     network_name = get_runtime_network()
     inspect_result = _run_command(["docker", "network", "inspect", network_name])
@@ -454,7 +461,7 @@ def build_launch_payload(instance):
     debug_launch_url = runtime_meta.get("debug_entry_url", "")
     launch_url = instance.entry_url or debug_launch_url
     if get_runtime_mode() == "docker" and instance.entry_url and instance.gateway_token:
-        launch_url = f"{instance.entry_url}#token={urllib.parse.quote(instance.gateway_token, safe='')}"
+        launch_url = _build_launch_bootstrap_url(instance)
     return {
         "mode": get_runtime_mode(),
         "launch_url": launch_url,

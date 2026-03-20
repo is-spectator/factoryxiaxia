@@ -92,6 +92,7 @@ def test_provision_instance_runtime_docker_uses_proxy_entry_url_and_debug_port(m
 def test_build_launch_payload_prefers_proxy_entry_url_over_debug_port(monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("KONGKONG_RUNTIME_MODE", "docker")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.xiaxia.factory")
 
     instance = _build_instance()
     instance.entry_url = "https://app.xiaxia.factory/kongkong/kongkong-1/"
@@ -102,7 +103,7 @@ def test_build_launch_payload_prefers_proxy_entry_url_over_debug_port(monkeypatc
 
     payload = runtime_service.build_launch_payload(instance)
 
-    assert payload["launch_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/#token=gateway-token-1"
+    assert payload["launch_url"] == "https://app.xiaxia.factory/kongkong-launch.html?slug=kongkong-1#token=gateway-token-1"
     assert payload["entry_url"] == "https://app.xiaxia.factory/kongkong/kongkong-1/"
     assert payload["debug_launch_url"] == "https://app.xiaxia.factory:39123/"
 
