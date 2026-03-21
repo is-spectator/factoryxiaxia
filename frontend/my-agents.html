@@ -606,8 +606,23 @@ function renderSelectedPanel() {
                     `}
 
                     <div class="card p-6">
-                        <h3 class="text-lg font-bold mb-5">当前配置</h3>
+                        <h3 class="text-lg font-bold mb-5">${kongkongMode ? '当前运行时配置' : '当前配置'}</h3>
                         <div class="space-y-4 text-sm">
+                            ${kongkongMode ? `
+                            <div class="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 px-4 py-4 text-sm text-cyan-100 leading-7">
+                                空空是 OpenClaw 工作台型员工，这里只展示模型、超参和运行时限制，不展示客服场景里的禁答、转人工与 PII 规则。
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p class="text-xs text-gray-500 mb-1">工作台实例</p>
+                                    <p>${esc(detail.deployment_name)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-500 mb-1">OpenClaw 实例标识</p>
+                                    <p class="font-mono text-xs">${esc((detail.kongkong_instance && detail.kongkong_instance.instance_slug) || '--')}</p>
+                                </div>
+                            </div>
+                            ` : `
                             <div>
                                 <p class="text-xs text-gray-500 mb-1">企业名称</p>
                                 <p>${esc((detail.config && detail.config.business_name) || detail.deployment_name)}</p>
@@ -616,6 +631,7 @@ function renderSelectedPanel() {
                                 <p class="text-xs text-gray-500 mb-1">品牌语气</p>
                                 <p>${esc((detail.config && detail.config.brand_voice) || 'professional')}</p>
                             </div>
+                            `}
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <p class="text-xs text-gray-500 mb-1">LLM Provider</p>
@@ -626,6 +642,7 @@ function renderSelectedPanel() {
                                     <p>${esc((detail.config && detail.config.provider_model) || 'rules')}</p>
                                 </div>
                             </div>
+                            ${kongkongMode ? '' : `
                             <div>
                                 <p class="text-xs text-gray-500 mb-1">禁答话题</p>
                                 <p class="text-gray-300">${(detail.config && detail.config.forbidden_topics && detail.config.forbidden_topics.length) ? esc(detail.config.forbidden_topics.join(', ')) : '暂无'}</p>
@@ -634,6 +651,7 @@ function renderSelectedPanel() {
                                 <p class="text-xs text-gray-500 mb-1">敏感关键词</p>
                                 <p class="text-gray-300">${(detail.config && detail.config.sensitive_keywords && detail.config.sensitive_keywords.length) ? esc(detail.config.sensitive_keywords.join(', ')) : '暂无'}</p>
                             </div>
+                            `}
                             <div class="grid grid-cols-3 gap-3 text-xs">
                                 <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
                                     Temperature: ${detail.config && detail.config.provider_temperature != null ? esc(detail.config.provider_temperature) : '0.2'}
@@ -645,6 +663,7 @@ function renderSelectedPanel() {
                                     Max Tokens: ${detail.config && detail.config.provider_max_tokens != null ? esc(detail.config.provider_max_tokens) : '800'}
                                 </div>
                             </div>
+                            ${kongkongMode ? '' : `
                             <div class="grid grid-cols-2 gap-3 text-xs">
                                 <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
                                     PII 脱敏: ${(detail.config && detail.config.pii_masking_enabled) ? '开启' : '关闭'}
@@ -653,6 +672,7 @@ function renderSelectedPanel() {
                                     命中隐私自动转人工: ${(detail.config && detail.config.handoff_on_pii) ? '开启' : '关闭'}
                                 </div>
                             </div>
+                            `}
                             <div class="grid grid-cols-2 gap-3 text-xs">
                                 <div class="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
                                     Timeout: ${detail.config && detail.config.provider_timeout_seconds != null ? esc(detail.config.provider_timeout_seconds) : '30'} 秒

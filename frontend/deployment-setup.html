@@ -97,6 +97,10 @@ function isKongKongDeployment(deployment) {
     return !!deployment && (deployment.runtime_kind === 'openclaw_managed' || !!deployment.kongkong_instance);
 }
 
+function isCurrentKongKongMode() {
+    return isKongKongDeployment(state.deployment) || isKongKongOrder(state.order);
+}
+
 function serializeList(value) {
     return String(value || '')
         .split(/[\n,]/)
@@ -546,11 +550,16 @@ function renderWizard() {
                 <section class="card p-6">
                     <div class="flex items-center justify-between gap-4 mb-5">
                         <div>
-                            <h2 class="text-lg font-bold">2. 配置机器人规则</h2>
-                            <p class="text-sm text-gray-400 mt-1">${kongkongMode ? '空空默认接入 qwen-max，你可以在这里维护实例名称、模型和运行参数。' : '部署创建后即可保存配置，后续可以重复修改。'}</p>
+                            <h2 class="text-lg font-bold">${kongkongMode ? '2. 配置运行时' : '2. 配置机器人规则'}</h2>
+                            <p class="text-sm text-gray-400 mt-1">${kongkongMode ? '空空是 OpenClaw 工作台型员工，这里只保留模型与运行参数，不包含客服知识库、禁答或转人工规则。' : '部署创建后即可保存配置，后续可以重复修改。'}</p>
                         </div>
                         <span class="text-xs px-3 py-1 rounded-full ${deployment ? 'bg-cyan-400/10 border border-cyan-400/20 text-cyan-300' : 'border border-white/10 text-gray-500'}">${deployment ? '可保存' : '先创建实例'}</span>
                     </div>
+                    ${kongkongMode ? `
+                    <div class="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 px-4 py-4 text-sm text-cyan-100 leading-7 mb-5">
+                        空空交付的是专属 OpenClaw 工作台，不是客服机器人。实例名称请在上一步维护；这里仅配置模型与运行参数。
+                    </div>
+                    ` : `
                     <div class="grid md:grid-cols-2 gap-4 mb-4">
                         <div>
                             <label class="text-xs text-gray-500 mb-2 block">企业名称</label>
@@ -589,11 +598,12 @@ function renderWizard() {
                             命中隐私信息时自动转人工
                         </label>
                     </div>
+                    `}
                     <div class="rounded-2xl border border-white/10 bg-white/5 p-4 mb-5">
                         <div class="flex items-center justify-between gap-3 mb-4">
                             <div>
-                                <p class="font-bold text-sm">LLM Provider</p>
-                                <p class="text-xs text-gray-500 mt-1">当前支持 rules 和 DashScope qwen-max。生产推荐使用 DashScope。</p>
+                                <p class="font-bold text-sm">${kongkongMode ? '模型与运行参数' : 'LLM Provider'}</p>
+                                <p class="text-xs text-gray-500 mt-1">${kongkongMode ? '空空默认接入 DashScope 的 qwen-max，可在这里调整推理参数。' : '当前支持 rules 和 DashScope qwen-max。生产推荐使用 DashScope。'}</p>
                             </div>
                             ${state.runtimeConfig && state.runtimeConfig.provider && state.runtimeConfig.provider.dashscope_enabled ? '<span class="text-[11px] px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-300">DashScope 已配置</span>' : '<span class="text-[11px] px-3 py-1 rounded-full border border-white/10 text-gray-500">未检测到 DashScope 密钥</span>'}
                         </div>
@@ -601,7 +611,7 @@ function renderWizard() {
                             <div>
                                 <label class="text-xs text-gray-500 mb-2 block">Provider</label>
                                 <select id="provider" onchange="handleProviderChange()" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400">
-                                    <option value="rules" ${config.provider === 'rules' ? 'selected' : ''}>rules（本地规则兜底）</option>
+                                    ${kongkongMode ? '' : `<option value="rules" ${config.provider === 'rules' ? 'selected' : ''}>rules（本地规则兜底）</option>`}
                                     <option value="dashscope" ${config.provider === 'dashscope' ? 'selected' : ''}>dashscope（Qwen）</option>
                                 </select>
                             </div>
@@ -632,11 +642,13 @@ function renderWizard() {
                             </div>
                         </div>
                     </div>
+                    ${kongkongMode ? '' : `
                     <div class="mb-5">
                         <label class="text-xs text-gray-500 mb-2 block">允许访问的浏览器域名（逗号或换行分隔）</label>
                         <textarea id="allowed-origins" rows="4" placeholder="例如：https://www.example.com&#10;https://help.example.com" class="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 focus:outline-none focus:border-cyan-400 resize-none">${esc((config.allowed_origins || []).join('\n'))}</textarea>
                         <p class="text-xs text-gray-500 mt-2 leading-6">浏览器挂件请求必须来自这里填写的域名；服务端直接调用公开 API 时不受这个白名单限制。</p>
                     </div>
+                    `}
                     <button onclick="saveConfig()" id="save-config-btn" class="btn-primary px-5 py-3 rounded-2xl font-bold transition ${deployment ? '' : 'opacity-50 pointer-events-none'}">保存配置</button>
                 </section>
 
@@ -776,7 +788,7 @@ function renderWizard() {
 
                     ${kongkongMode ? `
                         <div class="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-gray-400 leading-7">
-                            工作台入口会在实例运行后提供。首次进入 OpenClaw 如果要求输入 Gateway Token，系统会在打开入口时弹出提示。
+                            工作台入口会在实例运行后提供。平台会自动注入访问凭证，不需要再手动填写客服型 Token、禁答或转人工配置。
                         </div>
                     ` : (apiExample ? `
                         <div class="space-y-5">
@@ -834,16 +846,11 @@ async function ensureOrganizationSelection() {
 }
 
 function collectConfigPayload() {
-    const provider = normalizeProviderName(document.getElementById('provider').value);
+    const provider = isCurrentKongKongMode()
+        ? 'dashscope'
+        : normalizeProviderName(document.getElementById('provider').value);
     const providerDefaults = getProviderDefaults(provider);
-    return {
-        business_name: document.getElementById('business-name').value.trim(),
-        brand_voice: document.getElementById('brand-voice').value,
-        handoff_message: document.getElementById('handoff-message').value.trim(),
-        forbidden_topics: serializeList(document.getElementById('forbidden-topics').value),
-        sensitive_keywords: serializeList(document.getElementById('sensitive-keywords').value),
-        pii_masking_enabled: document.getElementById('pii-masking-enabled').checked,
-        handoff_on_pii: document.getElementById('handoff-on-pii').checked,
+    const runtimePayload = {
         provider,
         provider_model: provider === 'dashscope'
             ? (document.getElementById('provider-model').value.trim() || providerDefaults.provider_model || 'qwen-max')
@@ -853,8 +860,29 @@ function collectConfigPayload() {
         provider_max_tokens: Math.max(64, Math.round(readNumberInput('provider-max-tokens', providerDefaults.provider_max_tokens))),
         provider_timeout_seconds: Math.max(5, Math.round(readNumberInput('provider-timeout-seconds', providerDefaults.provider_timeout_seconds))),
         provider_retry_attempts: Math.max(0, Math.round(readNumberInput('provider-retry-attempts', providerDefaults.provider_retry_attempts))),
-        allowed_origins: serializeList(document.getElementById('allowed-origins').value),
     };
+    if (isCurrentKongKongMode()) {
+        return Object.assign({}, runtimePayload, {
+            business_name: '',
+            brand_voice: 'professional',
+            handoff_message: '',
+            forbidden_topics: [],
+            sensitive_keywords: [],
+            pii_masking_enabled: false,
+            handoff_on_pii: false,
+            allowed_origins: [],
+        });
+    }
+    return Object.assign({}, runtimePayload, {
+        business_name: document.getElementById('business-name').value.trim(),
+        brand_voice: document.getElementById('brand-voice').value,
+        handoff_message: document.getElementById('handoff-message').value.trim(),
+        forbidden_topics: serializeList(document.getElementById('forbidden-topics').value),
+        sensitive_keywords: serializeList(document.getElementById('sensitive-keywords').value),
+        pii_masking_enabled: document.getElementById('pii-masking-enabled').checked,
+        handoff_on_pii: document.getElementById('handoff-on-pii').checked,
+        allowed_origins: serializeList(document.getElementById('allowed-origins').value),
+    });
 }
 
 async function createDeployment() {
